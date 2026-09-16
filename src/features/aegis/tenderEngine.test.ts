@@ -189,4 +189,28 @@ describe("AegisBid tender engine (mirrors aegis_bid.compact)", () => {
     expect(makeCommitment(100n, "s", "pk")).toBe(makeCommitment(100n, "s", "pk"));
     expect(makeCommitment(100n, "s", "pk")).not.toBe(makeCommitment(101n, "s", "pk"));
   });
+
+  it("fails closed beyond the 64-bid settlement bound", () => {
+    const state = createTender(highestConfig({ reserve: 0n }));
+    const bids = Array.from({ length: 65 }, (_, i) => ({
+      bidderKey: `pk-${i}`,
+      amount: 1_000n + BigInt(i),
+      salt: `s-${i}`,
+      identitySecret: `id-${i}`,
+      now: 5 + i,
+    }));
+    bids.forEach((bid) => submitBid(state, bid));
+    beginEvaluation(state, 1_789_200);
+    expectCode(
+      () =>
+        settle(state, {
+          winningIndex: 64,
+          bids: bids.map(({ amount, salt, bidderKey }) => ({ amount, salt, bidderKey })),
+          now: 1_789_210,
+        }),
+      "TOO_MANY_BIDS",
+    );
+    expect(state.phase).toBe("Evaluating");
+    expect(state.settlement).toBeNull();
+  });
 });

@@ -51,6 +51,9 @@ export type TenderState = {
   settlement: SettlementReceipt | null;
 };
 
+/** Mirrors the constant settle-loop bound in contracts/aegis_bid.compact. */
+export const MAX_SETTLEMENT_BIDS = 64;
+
 export type TenderErrorCode =
   | "TENDER_NOT_OPEN"
   | "DEADLINE_ELAPSED"
@@ -59,6 +62,7 @@ export type TenderErrorCode =
   | "IDENTITY_ALREADY_USED"
   | "DUPLICATE_COMMITMENT"
   | "INCOMPLETE_BID_SET"
+  | "TOO_MANY_BIDS"
   | "UNCOMMITTED_BID"
   | "UNKNOWN_WINNER"
   | "NOT_MAXIMUM"
@@ -137,6 +141,7 @@ export function settle(
 ): SettlementReceipt {
   if (state.phase !== "Evaluating") throw new TenderError("NOT_EVALUATING");
   if (input.bids.length !== state.commitments.length) throw new TenderError("INCOMPLETE_BID_SET");
+  if (input.bids.length > MAX_SETTLEMENT_BIDS) throw new TenderError("TOO_MANY_BIDS");
 
   const winner = input.bids[input.winningIndex];
   if (!winner) throw new TenderError("UNKNOWN_WINNER");

@@ -98,6 +98,8 @@ export function friendlySettlementError(code: TenderErrorCode): string {
       return "Two bids produce the same sealed reference. Check salts and keys.";
     case "INCOMPLETE_BID_SET":
       return "The witness set does not match the commitment count. Include every committed bid.";
+    case "TOO_MANY_BIDS":
+      return "This tender exceeds the 64-bid settlement bound. Split it into smaller tenders.";
     case "UNCOMMITTED_BID":
       return "A supplied bid does not match any on-ledger commitment.";
     case "UNKNOWN_WINNER":

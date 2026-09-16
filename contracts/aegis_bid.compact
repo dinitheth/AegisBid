@@ -100,9 +100,11 @@ export circuit settle(
   const winnerCommitment = persistentCommit([winningAmount, winningKey], winningSalt);
   assert(commitments.lookup(winnerCommitment), "UNKNOWN_WINNER");
 
-  // Bounded loop: Compact requires a constant bound, so iterate to MAX_BIDS
-  // and only check indices below the runtime bidCount.
-  for (const i = 0; i < 64; i = i + 1) {
+  // Bounded loop: Compact only allows constant `0 .. N` ranges, so iterate
+  // to MAX_SETTLEMENT_BIDS (64) and check indices below the runtime bidCount.
+  // Larger bid sets fail closed via TOO_MANY_BIDS instead of going unchecked.
+  assert(bidCount <= 64, "TOO_MANY_BIDS");
+  for (const i of 0 .. 64) {
     if (i < bidCount) {
       const candidateAmount = settlementBid(i);
       const candidateSalt = settlementSalt(i);
