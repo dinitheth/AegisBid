@@ -102,7 +102,7 @@ export circuit settle(
 
   // Bounded loop: Compact requires a constant bound, so iterate to MAX_BIDS
   // and only check indices below the runtime bidCount.
-  for (let i = 0; i < 64; i = i + 1) {
+  for (const i = 0; i < 64; i = i + 1) {
     if (i < bidCount) {
       const candidateAmount = settlementBid(i);
       const candidateSalt = settlementSalt(i);
