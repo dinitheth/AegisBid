@@ -151,9 +151,10 @@ try {
     proof: await import("@midnight-ntwrk/midnight-js-http-client-proof-provider"),
     utils: await import("@midnight-ntwrk/midnight-js-utils"),
   };
-} catch {
+} catch (error) {
   fail(
-    "Midnight.js packages missing here. Install per docs/MIDNIGHT_INTEGRATION.md " +
+    `Midnight.js packages missing or unloadable (${error instanceof Error ? error.message : error}). ` +
+      "Install per docs/MIDNIGHT_INTEGRATION.md " +
       "(@midnight-ntwrk/midnight-js-contracts, -types, -network-id, " +
       "-level-private-state-provider, -indexer-public-data-provider, " +
       "-node-zk-config-provider, -http-client-proof-provider, -utils).",
