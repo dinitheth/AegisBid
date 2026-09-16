@@ -4,6 +4,21 @@ AegisBid is a zero-knowledge shielded tender and sealed-bid protocol designed fo
 
 > The browser application in this repository is a deterministic protocol workbench. It demonstrates the intended contract states, privacy boundary, proof lifecycle, settlement outputs, and QA cases locally. It does not claim that the included simulation is a live Midnight deployment.
 
+## Judge quickstart (Midnight Buildathon, Wave 1)
+
+```bash
+bun install        # or: npm install
+bun run test       # 13 protocol invariants (Vitest) — must be green
+bun run compact:check  # 19 contract structural gates — must pass
+bun run dev        # open the printed local URL
+```
+
+- Contract: [`contracts/aegis_bid.compact`](contracts/aegis_bid.compact), Compact language 0.16 baseline — see [`contracts/COMPACT_TOOLCHAIN.md`](contracts/COMPACT_TOOLCHAIN.md) for the pinned references and full-compile instructions.
+- Executable spec of the circuits: [`src/features/aegis/tenderEngine.ts`](src/features/aegis/tenderEngine.ts), asserted by [`tenderEngine.test.ts`](src/features/aegis/tenderEngine.test.ts), [`hash.test.ts`](src/features/aegis/hash.test.ts), [`storedBids.test.ts`](src/features/aegis/storedBids.test.ts).
+- Bid commitments in the UI are SHA-256 bindings (`amount:salt:key`) from the same engine — see `BidPage` in [`src/features/aegis/AegisUserApp.tsx`](src/features/aegis/AegisUserApp.tsx).
+- Submission pack: [`docs/pitch-deck.md`](docs/pitch-deck.md), [`docs/demo-script.md`](docs/demo-script.md), [`docs/submission-checklist.md`](docs/submission-checklist.md).
+- License: Apache-2.0 (`LICENSE`). Repo topic `midnightntwrk` must be set in the GitHub web UI (About → Topics).
+
 ## Why shielded tenders
 
 Conventional on-chain auctions expose economically sensitive values. Off-chain tenders preserve secrecy but require trust in the evaluator. AegisBid separates public verification from private data:
