@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "compact:check": "node scripts/compact-check.mjs",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

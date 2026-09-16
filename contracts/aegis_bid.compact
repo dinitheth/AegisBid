@@ -1,3 +1,14 @@
+// AegisBid shielded-tender circuits for Midnight Network.
+//
+// Toolchain baseline: Compact language 0.16 (`pragma language_version >= 0.16`).
+// See contracts/COMPACT_TOOLCHAIN.md for the pinned references and how to run
+// `npm run compact:check` (structural gate + optional full compile).
+// The TypeScript executable spec of these circuits lives in
+// src/features/aegis/tenderEngine.ts and is asserted by `npm test`.
+//
+// Privacy boundary: raw bid amounts, salts, and identity secrets enter only
+// via witnesses. Public ledger state carries commitments, nullifiers, phase,
+// and the settlement receipt. The winning value leaves via disclose() only.
 pragma language_version >= 0.16;
 
 import CompactStandardLibrary;
