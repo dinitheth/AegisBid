@@ -19,7 +19,7 @@
  * Never commit seeds or passwords: keep them in shell env, not in files.
  */
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { appendFile, mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -179,12 +179,22 @@ if (!Contract || !TenderMode || !ledger) {
 }
 
 // Constructor config for the demo tender. Override via CLI flags.
+// --e2e runs submitBid/beginEvaluation/settle against the deployment, so it
+// implies a near-future deadline unless --deadline/--deadline-in is given.
+const e2e = Boolean(args.e2e);
 const demoConfig = {
   issuer: args.issuer ?? "AegisBid Wave 1 demo issuer",
-  deadline: args.deadline ?? new Date(Date.now() + 7 * 86_400_000).toISOString(),
+  deadline:
+    args.deadline ??
+    (args["deadline-in"] !== undefined
+      ? String(Math.floor(Date.now() / 1000) + Number(args["deadline-in"]))
+      : e2e
+        ? String(Math.floor(Date.now() / 1000) + 150)
+        : new Date(Date.now() + 7 * 86_400_000).toISOString()),
   reserve: args.reserve ?? "1000",
   mode: args.mode ?? "highest",
   spec: args.spec ?? "AegisBid demo specification",
+  bidAmount: args["bid-amount"] ?? "1200",
 };
 
 const sha32 = (value) => createHash("sha256").update(value, "utf8").digest();
@@ -202,16 +212,24 @@ console.log(
   `tender config: ${JSON.stringify({ ...demoConfig, mode: ledgerConfig.mode, deadline: ledgerConfig.deadline.toString(), reserve: ledgerConfig.reserve.toString() })}`,
 );
 
-// Deploy-time witness stubs. The constructor never invokes witnesses; these
-// exist because withWitnesses requires the full Witnesses<PS> object.
+// Bid witnesses. Plain deploy uses inert stubs (the constructor never invokes
+// witnesses); --e2e uses one real sealed bid exercised through all circuits.
 const deployPrivateState = {};
+const e2eBid = e2e
+  ? {
+      amount: BigInt(demoConfig.bidAmount),
+      salt: randomBytes(32),
+      identitySecret: randomBytes(32),
+      bidderKey: randomBytes(32),
+    }
+  : undefined;
 const witnesses = {
-  localBidAmount: ({ privateState }) => [privateState, 0n],
-  localBidSalt: ({ privateState }) => [privateState, new Uint8Array(32)],
-  localIdentitySecret: ({ privateState }) => [privateState, new Uint8Array(32)],
-  settlementBid: ({ privateState }) => [privateState, 0n],
-  settlementSalt: ({ privateState }) => [privateState, new Uint8Array(32)],
-  settlementKey: ({ privateState }) => [privateState, new Uint8Array(32)],
+  localBidAmount: ({ privateState }) => [privateState, e2eBid?.amount ?? 0n],
+  localBidSalt: ({ privateState }) => [privateState, e2eBid?.salt ?? new Uint8Array(32)],
+  localIdentitySecret: ({ privateState }) => [privateState, e2eBid?.identitySecret ?? new Uint8Array(32)],
+  settlementBid: ({ privateState }) => [privateState, e2eBid?.amount ?? 0n],
+  settlementSalt: ({ privateState }) => [privateState, e2eBid?.salt ?? new Uint8Array(32)],
+  settlementKey: ({ privateState }) => [privateState, e2eBid?.bidderKey ?? new Uint8Array(32)],
 };
 
 let localConfig;
@@ -304,13 +322,55 @@ try {
     privateStateId: "aegisPrivateState",
     initialPrivateState: deployPrivateState,
   });
-  const onChain = await providers.publicDataProvider.queryContractState(contractAddress);
-  const decoded = ledger(onChain.data);
-  console.log(
-    `on-chain state: phase=${decoded.phase} commitments=${decoded.commitments.size()} ` +
-      `nullifiers=${decoded.nullifiers.size()} settled=${decoded.settlement.is_some}`,
-  );
-  void found;
+  const readState = async (label) => {
+    const onChain = await providers.publicDataProvider.queryContractState(contractAddress);
+    const decoded = ledger(onChain.data);
+    console.log(
+      `${label}: phase=${decoded.phase} commitments=${decoded.commitments.size()} ` +
+        `nullifiers=${decoded.nullifiers.size()} settled=${decoded.settlement.is_some}`,
+    );
+    return decoded;
+  };
+  await readState("on-chain state");
+
+  if (e2e && e2eBid) {
+    const nowSec = () => BigInt(Math.floor(Date.now() / 1000));
+    const submit = await found.callTx.submitBid(e2eBid.bidderKey, nowSec());
+    console.log(`submitBid ok: tx=${submit.public.txId} block=${submit.public.blockHeight}`);
+    await readState("after submitBid");
+
+    const waitMs = Number(ledgerConfig.deadline) * 1000 - Date.now() + 3000;
+    if (waitMs > 0) {
+      console.log(`waiting ${Math.ceil(waitMs / 1000)}s for the deadline...`);
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+    const evaluated = await found.callTx.beginEvaluation(nowSec());
+    console.log(`beginEvaluation ok: tx=${evaluated.public.txId}`);
+    await readState("after beginEvaluation");
+
+    const settled = await found.callTx.settle(0n, 1n, nowSec());
+    console.log(`settle ok: tx=${settled.public.txId}`);
+    const final = await readState("after settle");
+    const receipt = final.settlement.value;
+    console.log(
+      `receipt: winnerCommitment=${Buffer.from(receipt.winnerCommitment).toString("hex")} ` +
+        `winningValue=${receipt.winningValue} ` +
+        `comparisonRoot=${Buffer.from(receipt.comparisonRoot).toString("hex")} ` +
+        `settledAt=${receipt.settledAt}`,
+    );
+    await appendFile(
+      path.join(root, "managed", "E2E-RECEIPT.txt"),
+      [
+        `network=${network} contract=${contractAddress}`,
+        `winnerCommitment=${Buffer.from(receipt.winnerCommitment).toString("hex")}`,
+        `winningValue=${receipt.winningValue}`,
+        `comparisonRoot=${Buffer.from(receipt.comparisonRoot).toString("hex")}`,
+        `settledAt=${receipt.settledAt}`,
+        "",
+      ].join("\n"),
+    );
+    console.log("recorded receipt in managed/E2E-RECEIPT.txt");
+  }
 } finally {
   await closeWallet(ctx).catch(() => undefined);
 }
