@@ -155,20 +155,14 @@ The QA runner is deterministic and repeatable:
 
 For network-level tests, repeat these cases through generated bindings against `midnight-local-dev`, assert both returned values and ledger state, and retain proof-server logs as artifacts.
 
-## Hackathon judging alignment
+## Tests
 
-### Engineering — 40%
+Automated suite — Vitest, 13 tests, all passing:
 
-- Explicit public/private state boundary.
-- Commitment and nullifier model with deterministic state transitions.
-- Support for highest-bid and lowest-compliant evaluation.
-- Bounded winner-comparison circuit and explicit disclosure point.
-- Production-shaped Compact source with a clear path to generated bindings.
-- Failure states for duplicate identity, late submission, incomplete bid set, and unmet reserve.
-
-### QA — 15%
-
-Automated suite — `bun run test` (Vitest, 13 tests, all passing):
+```bash
+bun run test         # run once
+bun run test:watch   # watch mode
+```
 
 | Test file | What it proves |
 | --- | --- |
@@ -176,9 +170,10 @@ Automated suite — `bun run test` (Vitest, 13 tests, all passing):
 | `src/features/aegis/tenderEngine.test.ts` | Three-party sealed bid (winner disclosed, losers redacted); under-reserve, post-deadline, duplicate-identity, non-optimal-winner, and incomplete-bid-set rejections; lowest-compliant ceiling mode |
 | `src/features/aegis/storedBids.test.ts` | Legacy stored-bid migration; UI commitments match the protocol engine |
 
-- Negative tests verify that rejected operations do not mutate ledger state.
-- Test cases map directly to contract invariants (`tenderEngine.ts` mirrors `contracts/aegis_bid.compact`) and can be repeated against a local Midnight node.
-- Three core simulations also execute directly in the application, each emitting ordered execution logs, assertions, timing, and pass status.
+Negative tests verify that rejected operations do not mutate state. Cases map
+directly to the contract invariants (`tenderEngine.ts` mirrors
+`contracts/aegis_bid.compact`) and can be repeated against a local Midnight
+node through generated bindings.
 
 ## Security status
 
