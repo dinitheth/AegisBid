@@ -83,10 +83,13 @@ Compact is evolving. Pin a compiler release and reconcile syntax with that relea
 
 ## Deployment status (honest)
 
-The contract is **not deployed** — no mainnet / preprod / local address exists yet and this repo contains no generated bindings (`managed/`). The app runs as a deterministic workbench plus a read-only indexer view.
+The contract is **deployed on a local `undeployed` network** (Ubuntu VPS, toolchain 0.31.1) and exercised end-to-end with real ZK proofs: `submitBid` → `beginEvaluation` → `settle`, receipt `winningValue=1200`, phase `Settled`. Not on preprod / mainnet. This repo contains no generated bindings (`managed/` is build output) — compile to reproduce.
 
+- Live deployment (local devnet): `75e339942b5d9f07bd9713b13b12cdf9f10ebf68e487fd894fc8e7a21bdbe390`
+- Settlement receipt: winner `9dc624c6…0d78ba2`, value `1200`, root `267a008f…2ef17eb`, time `1789583043`
+- Transactions: deploy `75e33994…` (contract creation), bid `0048722c…` (block 825), evaluate `002687c0…`, settle `009e088c…`
 - Check status: `bun run midnight:status`
-- Real-chain path: [`docs/MIDNIGHT_INTEGRATION.md`](docs/MIDNIGHT_INTEGRATION.md) (endpoints in [`src/features/aegis/midnight/networks.ts`](src/features/aegis/midnight/networks.ts), ledger mapping + witnesses in [`src/features/aegis/midnight/contract.ts`](src/features/aegis/midnight/contract.ts), deploy via `bun run deploy:local`)
+- Real-chain path: [`docs/MIDNIGHT_INTEGRATION.md`](docs/MIDNIGHT_INTEGRATION.md) (endpoints in [`src/features/aegis/midnight/networks.ts`](src/features/aegis/midnight/networks.ts), ledger mapping + witnesses in [`src/features/aegis/midnight/contract.ts`](src/features/aegis/midnight/contract.ts), deploy via `bun run deploy:local`, e2e via `node --import tsx/esm scripts/midnight-deploy.mjs --network undeployed --e2e`)
 - Configure a deployment: copy [`.env.example`](.env.example), set `VITE_MIDNIGHT_NETWORK_ID` and `VITE_AEGISBID_CONTRACT`.
 
 ## Privacy guarantees and limits

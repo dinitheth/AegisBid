@@ -1,9 +1,12 @@
 # AegisBid Midnight integration — real-chain path
 
-> Status: **NOT DEPLOYED.** No contract is on any Midnight network and this
-> repo contains no generated bindings (`managed/`). Run
-> `node scripts/midnight-status.mjs` for the live checklist. Everything below
-> is the exact path to a first deployment, taken from the official docs.
+> Status: **DEPLOYED on local `undeployed` network (2026-09-16).** Contract
+> `75e339942b5d9f07bd9713b13b12cdf9f10ebf68e487fd894fc8e7a21bdbe390`,
+> exercised end-to-end with real proofs — bid tx `0048722c…` (block 825),
+> evaluate tx `002687c0…`, settle tx `009e088c…`, receipt `winningValue=1200`,
+> phase `Settled`. Reachable via the VPS + SSH tunnels (see
+> `docs/VPS-DEPLOY.md`). Not on preprod / mainnet. This repo contains no
+> generated bindings (`managed/` is local build output).
 
 ## What exists today
 
@@ -15,8 +18,15 @@
 - `src/features/aegis/midnight/contract.ts` — deployment-status helper,
   ledger-shape mapping (`toLedgerTenderConfig`), witness builders for
   `submitBid` / `settle`, dynamic bindings loader. 7 tests.
-- `scripts/midnight-deploy.mjs` — compile + wallet + provider scaffolding
-  (stops before `deployContract` until generated types are confirmed).
+- `scripts/midnight-deploy.mjs` — compile + wallet + providers + `deployContract`
+  + on-chain verification, with `--e2e` exercising all three circuits
+  (reconciled against generated `index.d.ts`, toolchain 0.31.1).
+- Deploy host notes: run under `node --import tsx/esm` (tsx loader for the
+  local-dev TS helpers); keep ONE `@midnight-ntwrk` tree — symlink the scope
+  to `midnight-local-dev/node_modules` (two copies cause
+  `expected instance of …` WASM failures); pin `compact-runtime@0.16.0` to
+  match the bindings; give the proof server swap (it OOMs proving `settle`
+  on small boxes — exit 137).
 - Browser wallet (`wallet.ts`, Lace connector) and read-only indexer view
   (`chain.ts`) are wired but untested against a live chain.
 

@@ -16,3 +16,4 @@
 - [x] Harden contract for the compile gate (persistentCommit hiding, disclosed nullifier, single-tuple persistentHash, constant-bounded settle loop, Counter.read) + 24-gate check
 - [x] Prepare Wave 1 submission pack (AKINDO text, judge verification, manual steps)
 - [x] Stage real Midnight integration layer (networks, ledger mapping, witnesses, deploy + status scripts, docs) — NOT DEPLOYED yet
+- [x] Compile with real toolchain 0.31.1, deploy to local devnet, settle end-to-end with real proofs (receipt winningValue=1200)

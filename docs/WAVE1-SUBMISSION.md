@@ -53,9 +53,9 @@ bun run dev           # Settlement → Load 3 demo offers → Start evaluation �
 
 ## 5. Wave 2 plan
 
-Generate TypeScript bindings from the pinned compiler, connect the proof
-flow to `midnight-local-dev`, run evaluator settlement against a local node
-with proof-server logs, then pilot with a real issuer. Integration layer
-already staged: `src/features/aegis/midnight/` (networks, ledger mapping,
-witnesses), `scripts/midnight-deploy.mjs`, `docs/MIDNIGHT_INTEGRATION.md`.
-Current status is NOT DEPLOYED — see `bun run midnight:status`.
+TypeScript bindings are generated (toolchain 0.31.1) and the contract is
+**deployed on a local devnet and settled end-to-end with real proofs**
+(`75e33994…`, receipt `winningValue=1200`, phase `Settled` — see
+`docs/MIDNIGHT_INTEGRATION.md`). Next: connect the browser proof flow to the
+deployment, promote to preprod with faucet tNIGHT + `MIDNIGHT_SEED`, then
+pilot with a real issuer.
