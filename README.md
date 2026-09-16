@@ -17,7 +17,7 @@ bun run dev        # open the printed local URL
 - Executable spec of the circuits: [`src/features/aegis/tenderEngine.ts`](src/features/aegis/tenderEngine.ts), asserted by [`tenderEngine.test.ts`](src/features/aegis/tenderEngine.test.ts), [`hash.test.ts`](src/features/aegis/hash.test.ts), [`storedBids.test.ts`](src/features/aegis/storedBids.test.ts).
 - Bid commitments in the UI are SHA-256 bindings (`amount:salt:key`) from the same engine — see `BidPage` in [`src/features/aegis/AegisUserApp.tsx`](src/features/aegis/AegisUserApp.tsx).
 - Submission pack: [`docs/pitch-deck.md`](docs/pitch-deck.md), [`docs/demo-script.md`](docs/demo-script.md), [`docs/submission-checklist.md`](docs/submission-checklist.md).
-- License: Apache-2.0 (`LICENSE`). Repo topic `midnightntwrk` must be set in the GitHub web UI (About → Topics).
+- License: Apache-2.0 (`LICENSE`). Repo topic `midnightntwrk` is set.
 
 ## Why shielded tenders
 
@@ -168,10 +168,17 @@ For network-level tests, repeat these cases through generated bindings against `
 
 ### QA — 15%
 
-- Three core simulations execute directly in the application.
-- Every scenario emits ordered execution logs, assertions, timing, and pass status.
+Automated suite — `bun run test` (Vitest, 13 tests, all passing):
+
+| Test file | What it proves |
+| --- | --- |
+| `src/features/aegis/hash.test.ts` | SHA-256 matches FIPS 180-4 vectors, deterministic |
+| `src/features/aegis/tenderEngine.test.ts` | Three-party sealed bid (winner disclosed, losers redacted); under-reserve, post-deadline, duplicate-identity, non-optimal-winner, and incomplete-bid-set rejections; lowest-compliant ceiling mode |
+| `src/features/aegis/storedBids.test.ts` | Legacy stored-bid migration; UI commitments match the protocol engine |
+
 - Negative tests verify that rejected operations do not mutate ledger state.
-- Test cases map directly to contract invariants and can be repeated against a local Midnight node.
+- Test cases map directly to contract invariants (`tenderEngine.ts` mirrors `contracts/aegis_bid.compact`) and can be repeated against a local Midnight node.
+- Three core simulations also execute directly in the application, each emitting ordered execution logs, assertions, timing, and pass status.
 
 ## Security status
 
