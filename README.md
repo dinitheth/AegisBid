@@ -81,6 +81,14 @@ The production-shaped reference contract is [`contracts/aegis_bid.compact`](cont
 
 Compact is evolving. Pin a compiler release and reconcile syntax with that release before deployment. The contract is intentionally presented as production-shaped reference code rather than a claim of audited, mainnet-ready bytecode.
 
+## Deployment status (honest)
+
+The contract is **not deployed** — no mainnet / preprod / local address exists yet and this repo contains no generated bindings (`managed/`). The app runs as a deterministic workbench plus a read-only indexer view.
+
+- Check status: `bun run midnight:status`
+- Real-chain path: [`docs/MIDNIGHT_INTEGRATION.md`](docs/MIDNIGHT_INTEGRATION.md) (endpoints in [`src/features/aegis/midnight/networks.ts`](src/features/aegis/midnight/networks.ts), ledger mapping + witnesses in [`src/features/aegis/midnight/contract.ts`](src/features/aegis/midnight/contract.ts), deploy via `bun run deploy:local`)
+- Configure a deployment: copy [`.env.example`](.env.example), set `VITE_MIDNIGHT_NETWORK_ID` and `VITE_AEGISBID_CONTRACT`.
+
 ## Privacy guarantees and limits
 
 ### Guaranteed by the protocol design

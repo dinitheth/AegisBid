@@ -55,4 +55,7 @@ bun run dev           # Settlement → Load 3 demo offers → Start evaluation �
 
 Generate TypeScript bindings from the pinned compiler, connect the proof
 flow to `midnight-local-dev`, run evaluator settlement against a local node
-with proof-server logs, then pilot with a real issuer.
+with proof-server logs, then pilot with a real issuer. Integration layer
+already staged: `src/features/aegis/midnight/` (networks, ledger mapping,
+witnesses), `scripts/midnight-deploy.mjs`, `docs/MIDNIGHT_INTEGRATION.md`.
+Current status is NOT DEPLOYED — see `bun run midnight:status`.

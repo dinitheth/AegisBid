@@ -15,3 +15,4 @@
 - [x] Add evaluator settlement flow wired to tenderEngine (beginEvaluation + settle, receipts, history, 5 adapter tests)
 - [x] Harden contract for the compile gate (persistentCommit hiding, disclosed nullifier, single-tuple persistentHash, constant-bounded settle loop, Counter.read) + 24-gate check
 - [x] Prepare Wave 1 submission pack (AKINDO text, judge verification, manual steps)
+- [x] Stage real Midnight integration layer (networks, ledger mapping, witnesses, deploy + status scripts, docs) — NOT DEPLOYED yet

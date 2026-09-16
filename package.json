@@ -14,6 +14,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "compact:check": "node scripts/compact-check.mjs",
+    "midnight:status": "node scripts/midnight-status.mjs",
+    "deploy:local": "node scripts/midnight-deploy.mjs --network undeployed",
+    "deploy:preprod": "node scripts/midnight-deploy.mjs --network preprod",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
