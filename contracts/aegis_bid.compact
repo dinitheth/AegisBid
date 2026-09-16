@@ -50,7 +50,8 @@ witness settlementSalt(index: Uint<16>): Bytes<32>;
 witness settlementKey(index: Uint<16>): Bytes<32>;
 
 constructor(config: TenderConfig) {
-  tender = config;
+  // The tender policy is public by design (published for all bidders).
+  tender = disclose(config);
   phase = TenderPhase.Open;
   // commitmentCount is a Counter and defaults to 0 (`=` is undefined for it).
   settlement = none<SettlementReceipt>();
