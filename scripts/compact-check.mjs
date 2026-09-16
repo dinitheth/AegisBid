@@ -46,9 +46,9 @@ for (const circuit of ["submitBid", "beginEvaluation", "settle"]) {
 }
 check("raw bids never assigned to ledger (only commitments/nullifiers/receipt)", !/tender\s*=\s*localBidAmount/.test(source));
 check("winning value leaves via disclose()", /disclose\s*\(\s*winningAmount\s*\)/.test(source));
-check("commitments use persistentCommit (hiding, no disclose needed)", /persistentCommit\s*\(\s*\[/.test(source));
-check("nullifier is a disclosed persistentHash (deterministic by design)", /disclose\s*\(\s*persistentHash\s*\(\s*\[/.test(source));
-check("comparisonRoot uses single-tuple persistentHash", /persistentHash\s*\(\s*\[\s*winnerCommitment/.test(source));
+check("commitments use persistentCommit (hiding, no disclose needed)", /persistentCommit\s*(<[^>]*>)?\s*\(\s*\[/.test(source));
+check("nullifier is a disclosed persistentHash (deterministic by design)", /disclose\s*\(\s*persistentHash\s*(<[^>]*>)?\s*\(\s*\[/.test(source));
+check("comparisonRoot uses single-tuple persistentHash", /persistentHash\s*(<[^>]*>)?\s*\(\s*\[\s*winnerCommitment/.test(source));
 check("settle loop is a constant 0..64 range with runtime guard", /for\s*\(\s*const\s+i\s+of\s+0\s*\.\.\s*64\s*\)/.test(source) && /if\s*\(\s*i\s*<\s*bidCount\s*\)/.test(source));
 check("oversized bid sets fail closed", /TOO_MANY_BIDS/.test(source));
 check("commitment count compared via Counter.read()", /commitmentCount\.read\s*\(\s*\)/.test(source));

@@ -67,11 +67,11 @@ export circuit submitBid(
   const salt = localBidSalt();
   const identity = localIdentitySecret();
   // Deterministic nullifier: a disclosed hash (no randomness by design).
-  const identityNullifier = disclose(persistentHash([identity, tender.issuer]));
+  const identityNullifier = disclose(persistentHash<[Bytes<32>, Bytes<32>]>([identity, tender.issuer]));
   assert(!nullifiers.member(identityNullifier), "IDENTITY_ALREADY_USED");
 
   // Hiding commitment: persistentCommit blinds (amount, key) with the random salt.
-  const commitment = persistentCommit([amount, bidderPublicKey], salt);
+  const commitment = persistentCommit<[Uint<128>, Bytes<32>]>([amount, bidderPublicKey], salt);
   assert(!commitments.member(commitment), "DUPLICATE_COMMITMENT");
 
   commitments.insert(commitment, true);
@@ -97,7 +97,7 @@ export circuit settle(
   const winningAmount = settlementBid(winningIndex);
   const winningSalt = settlementSalt(winningIndex);
   const winningKey = settlementKey(winningIndex);
-  const winnerCommitment = persistentCommit([winningAmount, winningKey], winningSalt);
+  const winnerCommitment = persistentCommit<[Uint<128>, Bytes<32>]>([winningAmount, winningKey], winningSalt);
   assert(commitments.lookup(winnerCommitment), "UNKNOWN_WINNER");
 
   // Bounded loop: Compact only allows constant `0 .. N` ranges, so iterate
@@ -109,7 +109,7 @@ export circuit settle(
       const candidateAmount = settlementBid(i);
       const candidateSalt = settlementSalt(i);
       const candidateKey = settlementKey(i);
-      const candidateCommitment = persistentCommit([candidateAmount, candidateKey], candidateSalt);
+      const candidateCommitment = persistentCommit<[Uint<128>, Bytes<32>]>([candidateAmount, candidateKey], candidateSalt);
       assert(commitments.lookup(candidateCommitment), "UNCOMMITTED_BID");
 
       if (tender.mode == TenderMode.HighestBid) {
@@ -128,7 +128,7 @@ export circuit settle(
   const receipt = SettlementReceipt {
     winnerCommitment,
     winningValue: disclose(winningAmount),
-    comparisonRoot: persistentHash([winnerCommitment, bidCount, tender.specificationRoot]),
+    comparisonRoot: persistentHash<[Bytes<32>, Uint<16>, Bytes<32>]>([winnerCommitment, bidCount, tender.specificationRoot]),
     settledAt: now
   };
   settlement = some(receipt);
