@@ -121,12 +121,22 @@ if (network === "mainnet") fail("mainnet deploys are out of scope for this scrip
 console.log(`network: ${network} (local-dev helpers: ${localDevDir})`);
 
 // — phase 3: providers (docs pattern, inside midnight-local-dev context) ----
+// midnight-local-dev sources are TypeScript: enable the tsx loader so plain
+// `node` can import them. tsx is a loader only (no runtime classes), so it
+// cannot cause SDK identity skew.
+try {
+  const { register } = await import("node:module");
+  register("tsx/esm", pathToFileURL(path.join(root, "scripts", "midnight-deploy.mjs")));
+} catch {
+  fail("tsx loader missing: npm install --no-save tsx (see docs/MIDNIGHT_INTEGRATION.md).");
+}
+
 let walletHelpers;
 try {
-  walletHelpers = await import(pathToFileURL(path.join(localDevDir, "src", "wallet.js")).href);
+  walletHelpers = await import(pathToFileURL(path.join(localDevDir, "src", "wallet.ts")).href);
 } catch {
   fail(
-    `cannot load midnight-local-dev wallet helpers at ${localDevDir}/src/wallet.js. ` +
+    `cannot load midnight-local-dev wallet helpers at ${localDevDir}/src/wallet.ts. ` +
       `Clone https://github.com/midnightntwrk/midnight-local-dev next to this repo and npm install there.`,
   );
 }
@@ -204,13 +214,17 @@ const witnesses = {
 
 let localConfig;
 try {
+  // StandaloneConfig reads MN_INDEXER_URL / MN_INDEXER_WS / MN_NODE_URL /
+  // MN_NODE_WS at construction: CLI flags win over its localhost defaults.
+  if (args.indexer) process.env.MN_INDEXER_URL = args.indexer;
+  if (args["indexer-ws"]) process.env.MN_INDEXER_WS = args["indexer-ws"];
   const { StandaloneConfig } = await import(
-    pathToFileURL(path.join(localDevDir, "src", "config.js")).href
+    pathToFileURL(path.join(localDevDir, "src", "config.ts")).href
   );
   localConfig = new StandaloneConfig();
 } catch {
   fail(
-    `cannot load StandaloneConfig from ${localDevDir}/src/config.js. ` +
+    `cannot load StandaloneConfig from ${localDevDir}/src/config.ts. ` +
       `Use a midnight-local-dev checkout matching the docs (guides/networks-and-environments).`,
   );
 }
