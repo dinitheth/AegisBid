@@ -131,7 +131,7 @@ export circuit settle(
     comparisonRoot: persistentHash<[Bytes<32>, Uint<16>, Bytes<32>]>([winnerCommitment, bidCount, tender.specificationRoot]),
     settledAt: now
   };
-  settlement = some(receipt);
+  settlement = some<SettlementReceipt>(receipt);
   phase = TenderPhase.Settled;
   return receipt;
 }
