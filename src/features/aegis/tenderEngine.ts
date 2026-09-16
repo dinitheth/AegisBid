@@ -7,6 +7,12 @@
  *   beginEvaluation -> phase transition after the deadline
  *   settle     -> membership, pairwise ordering, reserve/ceiling, receipt
  *
+ * Workbench hash note: commitments here are SHA-256 over
+ * `amount:salt:key`, modeling the contract's `persistentCommit` binding
+ * (salt blinds the value). Nullifiers model the disclosed `persistentHash`
+ * of the identity witness. The workbench never claims SHA-256 is the
+ * on-chain primitive.
+ *
  * Amounts are `bigint` (tDUST base units). Time is a numeric ledger slot /
  * unix timestamp — callers must use the same unit for `deadline` and `now`.
  */

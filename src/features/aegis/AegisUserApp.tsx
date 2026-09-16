@@ -17,13 +17,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { defaultTender, formatCountdown, generateNonce, initialTenders, normalizeStoredBids, type StoredBid, type Tender } from "./protocol";
-import { makeCommitment } from "./tenderEngine";
+import { beginEvaluation, makeCommitment, settle, TenderError, type BidWitness, type SettlementReceipt, type TenderState } from "./tenderEngine";
+import { buildTenderStateForSettlement, friendlySettlementError, parseReserveToBigInt, storedBidToWitness, uiTenderToConfig } from "./evaluator";
 import { useMidnightWallet } from "./wallet";
 import { getChainConfig, isConfigured } from "./chain";
 import { useChainTenders, type ChainTenders } from "./useChainTenders";
 import logo from "@/assets/aegisbid-logo.png";
 
-type Page = "home" | "tenders" | "bid" | "bids" | "compare" | "balance" | "results" | "about";
+type Page = "home" | "tenders" | "bid" | "bids" | "compare" | "settle" | "balance" | "results" | "about";
 type SubmittedBid = StoredBid;
 type WalletState = ReturnType<typeof useMidnightWallet>;
 
@@ -129,6 +130,7 @@ const navItems: { id: Page; label: string }[] = [
   { id: "tenders", label: "Open tenders" },
   { id: "bids", label: "Bid history" },
   { id: "compare", label: "Compare bids" },
+  { id: "settle", label: "Settlement" },
   { id: "balance", label: "Wallet balance" },
   { id: "results", label: "Results" },
   { id: "about", label: "How it works" },
@@ -520,6 +522,369 @@ function ComparePage({ bids, tenders }: { bids: SubmittedBid[]; tenders: Tender[
   );
 }
 
+type SettlementRecord = {
+  tenderId: string;
+  tenderTitle: string;
+  winnerCommitment: string;
+  winningValue: string;
+  comparisonRoot: string;
+  settledAt: number;
+  bidCount: number;
+  mode: string;
+};
+
+const SETTLEMENT_STORAGE_KEY = "aegis-settlements";
+
+function loadSettlements(): SettlementRecord[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(SETTLEMENT_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (entry): entry is SettlementRecord =>
+        typeof entry === "object" &&
+        entry !== null &&
+        typeof (entry as Record<string, unknown>)["tenderId"] === "string" &&
+        typeof (entry as Record<string, unknown>)["winnerCommitment"] === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+function SettlementPage({ bids, tenders }: { bids: SubmittedBid[]; tenders: Tender[] }) {
+  const fallbackTender = tenders[0] ?? defaultTender;
+  const [tenderId, setTenderId] = useState(fallbackTender.id);
+  const [reserveInput, setReserveInput] = useState("");
+  const [manual, setManual] = useState<BidWitness[]>([]);
+  const [manualAmount, setManualAmount] = useState("");
+  const [manualKey, setManualKey] = useState("");
+  const [winningIndex, setWinningIndex] = useState(0);
+  const [enginePhase, setEnginePhase] = useState<"Open" | "Evaluating" | "Settled">("Open");
+  const [engineState, setEngineState] = useState<TenderState | null>(null);
+  const [engineCommitments, setEngineCommitments] = useState<string[]>([]);
+  const [receipt, setReceipt] = useState<SettlementReceipt | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [history, setHistory] = useState<SettlementRecord[]>(() => loadSettlements());
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SETTLEMENT_STORAGE_KEY, JSON.stringify(history));
+    } catch {
+      /* storage full or unavailable */
+    }
+  }, [history]);
+
+  const tender = tenders.find((item) => item.id === tenderId) ?? fallbackTender;
+  const reserveOverride = reserveInput.trim() === "" ? null : /^\d+$/.test(reserveInput.trim()) ? BigInt(reserveInput.trim()) : null;
+  const reserveInvalid = reserveInput.trim() !== "" && !/^\d+$/.test(reserveInput.trim());
+  const config = useMemo(
+    () => uiTenderToConfig(tender, { reserve: reserveOverride }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tender.id, tender.issuer, tender.deadline, tender.threshold, tender.mode, tender.specification, reserveInput],
+  );
+  const defaultReserve = parseReserveToBigInt(tender.threshold);
+
+  const autoWitnesses = useMemo(
+    () =>
+      bids
+        .filter((bid) => bid.tenderId === tender.id)
+        .map((bid) => storedBidToWitness(bid))
+        .filter((w): w is BidWitness => w !== null),
+    [bids, tender.id],
+  );
+  const witnesses = useMemo(() => [...autoWitnesses, ...manual], [autoWitnesses, manual]);
+  const commitments = useMemo(
+    () => witnesses.map((w) => makeCommitment(w.amount, w.salt, w.bidderKey)),
+    [witnesses],
+  );
+  const eligibility = useMemo(
+    () =>
+      witnesses.map((w) =>
+        config.mode === "highest" ? w.amount >= config.reserve : w.amount <= config.reserve,
+      ),
+    [witnesses, config],
+  );
+  const suggestedIndex = useMemo(() => {
+    let best: number | null = null;
+    witnesses.forEach((w, index) => {
+      if (!eligibility[index]) return;
+      if (best === null) {
+        best = index;
+        return;
+      }
+      const current = witnesses[best as number] as BidWitness;
+      if (config.mode === "highest" ? w.amount > current.amount : w.amount < current.amount) best = index;
+    });
+    return best;
+  }, [witnesses, eligibility, config.mode]);
+  const safeWinningIndex = witnesses.length === 0 ? 0 : Math.min(winningIndex, witnesses.length - 1);
+  const deadlineReached = Date.now() >= config.deadline;
+
+  const resetEngine = () => {
+    setEnginePhase("Open");
+    setEngineState(null);
+    setEngineCommitments([]);
+    setReceipt(null);
+    setFailure(null);
+  };
+
+  const selectTender = (id: string) => {
+    setTenderId(id);
+    setManual([]);
+    setManualAmount("");
+    setManualKey("");
+    setWinningIndex(0);
+    setReserveInput("");
+    resetEngine();
+  };
+
+  const addManual = () => {
+    if (!/^\d+$/.test(manualAmount)) return;
+    const witness: BidWitness = {
+      amount: BigInt(manualAmount),
+      salt: generateNonce(),
+      bidderKey: manualKey.trim() || `evaluator-key:${Date.now()}`,
+    };
+    setManual((items) => [...items, witness]);
+    setManualAmount("");
+    setManualKey("");
+    resetEngine();
+  };
+
+  const loadDemo = () => {
+    const stamp = Date.now() % 100000;
+    let demo: BidWitness[];
+    if (config.mode === "highest") {
+      const base = config.reserve > 10000n ? config.reserve : 1000n;
+      demo = [
+        { amount: base + 200n, salt: generateNonce(), bidderKey: `demo-a:${stamp}` },
+        { amount: base + 450n, salt: generateNonce(), bidderKey: `demo-b:${stamp}` },
+        { amount: base + 100n, salt: generateNonce(), bidderKey: `demo-c:${stamp}` },
+      ];
+    } else {
+      const base = config.reserve > 10000n ? config.reserve : 4200n;
+      demo = [
+        { amount: base - 100n, salt: generateNonce(), bidderKey: `demo-a:${stamp}` },
+        { amount: base - 500n, salt: generateNonce(), bidderKey: `demo-b:${stamp}` },
+        { amount: base + 200n, salt: generateNonce(), bidderKey: `demo-c:${stamp}` },
+      ];
+    }
+    setManual(demo);
+    setWinningIndex(1);
+    resetEngine();
+  };
+
+  const startEvaluation = () => {
+    setFailure(null);
+    try {
+      if (witnesses.length === 0) throw new Error("Add at least one bid witness before evaluation.");
+      const state = buildTenderStateForSettlement(config, witnesses);
+      beginEvaluation(state, Date.now());
+      // Keep the live engine state for settlement; commitments are the public set.
+      setEngineState(state);
+      setEngineCommitments([...state.commitments]);
+      setEnginePhase("Evaluating");
+    } catch (cause) {
+      if (cause instanceof TenderError) setFailure(`${friendlySettlementError(cause.code)} [${cause.code}]`);
+      else setFailure(cause instanceof Error ? cause.message : "Evaluation could not start.");
+    }
+  };
+
+  const settleNow = () => {
+    setFailure(null);
+    try {
+      const state = engineState;
+      if (!state || enginePhase !== "Evaluating") throw new Error("Start evaluation before settlement.");
+      if (witnesses.length !== state.commitments.length) {
+        throw new Error("The witness set changed after evaluation started. Restart evaluation.");
+      }
+      const result = settle(state, { winningIndex: safeWinningIndex, bids: witnesses, now: Date.now() });
+      setReceipt(result);
+      setEnginePhase("Settled");
+      setHistory((items) => [
+        {
+          tenderId: tender.id,
+          tenderTitle: tender.title,
+          winnerCommitment: result.winnerCommitment,
+          winningValue: result.winningValue.toString(),
+          comparisonRoot: result.comparisonRoot,
+          settledAt: result.settledAt,
+          bidCount: witnesses.length,
+          mode: tender.mode,
+        },
+        ...items,
+      ].slice(0, 20));
+    } catch (cause) {
+      if (cause instanceof TenderError) setFailure(`${friendlySettlementError(cause.code)} [${cause.code}]`);
+      else setFailure(cause instanceof Error ? cause.message : "Settlement failed.");
+    }
+  };
+
+  const losingRedacted = receipt
+    ? witnesses
+        .filter((_, index) => index !== safeWinningIndex)
+        .every((w) => !JSON.stringify(receipt).includes(w.amount.toString()))
+    : false;
+
+  return (
+    <div className="mx-auto max-w-5xl px-5 py-12 sm:py-16">
+      <p className="text-sm font-semibold text-primary">Evaluator flow</p>
+      <h1 className="mt-2 font-display text-4xl font-semibold text-foreground">Settle a tender</h1>
+      <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">
+        Reconstruct the commitment set, open evaluation after closing, then prove the winner with the same
+        checks as <span className="font-mono text-xs">contracts/aegis_bid.compact</span>. Only the winning value is disclosed.
+      </p>
+
+      <section className="mt-8 grid gap-4 rounded-lg border border-border bg-card p-6 sm:grid-cols-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="settle-tender">Tender</Label>
+          <select
+            id="settle-tender"
+            value={tender.id}
+            onChange={(event) => selectTender(event.target.value)}
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
+          >
+            {tenders.map((item) => (
+              <option key={item.id} value={item.id}>{item.title} · {item.id}</option>
+            ))}
+          </select>
+          <p className="text-xs text-card-foreground/60">{tender.issuer} · {tender.mode}</p>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="settle-reserve">Reserve / ceiling (credits)</Label>
+          <Input
+            id="settle-reserve"
+            inputMode="numeric"
+            value={reserveInput}
+            onChange={(event) => {
+              setReserveInput(event.target.value.replace(/\D/g, ""));
+              resetEngine();
+            }}
+            placeholder={defaultReserve !== null ? defaultReserve.toString() : "e.g. 4200000"}
+          />
+          {reserveInvalid && <p className="text-xs text-destructive">Enter whole numbers only.</p>}
+        </div>
+        <div className="space-y-1.5">
+          <Label>Closing status</Label>
+          <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
+            <p className="font-semibold text-card-foreground">{deadlineReached ? "Closed — ready for evaluation" : `Open — ${formatCountdown(tender.deadline)} left`}</p>
+            <p className="mt-1 text-xs text-card-foreground/60">Deadline {formatMoment(config.deadline)}</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="mt-6 rounded-lg border border-border bg-card p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-display text-xl font-semibold text-card-foreground">Bid witnesses ({witnesses.length})</h2>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={loadDemo}>Load 3 demo offers</Button>
+            {suggestedIndex !== null && (
+              <Button size="sm" variant="ghost" onClick={() => setWinningIndex(suggestedIndex)}>Select optimal</Button>
+            )}
+          </div>
+        </div>
+        <p className="mt-2 text-sm text-card-foreground/70">
+          {autoWitnesses.length} from this device · {manual.length} added manually. The evaluator supplies every
+          committed witness; the circuit rejects incomplete or uncommitted sets.
+        </p>
+        {witnesses.length === 0 ? (
+          <div className="mt-4 rounded-md border border-dashed border-border p-6 text-center text-sm text-card-foreground/70">
+            No witnesses for this tender yet. Submit a bid first, add one manually, or load demo offers.
+          </div>
+        ) : (
+          <div className="mt-4 overflow-x-auto rounded-md border border-border">
+            <table className="w-full min-w-[36rem] text-left text-sm">
+              <thead className="border-b border-border bg-muted/50 text-xs text-card-foreground/60">
+                <tr><th className="p-3 font-medium">Winner</th><th className="p-3 font-medium">Offer</th><th className="p-3 font-medium">Sealed reference</th><th className="p-3 font-medium">Amount</th><th className="p-3 font-medium">Policy</th></tr>
+              </thead>
+              <tbody>
+                {witnesses.map((w, index) => (
+                  <tr key={`${commitments[index]}-${index}`} className={`border-b border-border last:border-0 ${index === safeWinningIndex ? "bg-success/8" : ""}`}>
+                    <td className="p-3"><input type="radio" aria-label={`Select offer ${index + 1} as winner`} checked={index === safeWinningIndex} onChange={() => setWinningIndex(index)} className="size-4 accent-primary" /></td>
+                    <td className="p-3 text-card-foreground">{index < autoWitnesses.length ? "This device" : "Manual"}{suggestedIndex === index && <span className="ml-2 rounded-full bg-success/12 px-2 py-0.5 text-xs font-semibold text-success">Optimal</span>}</td>
+                    <td className="max-w-[12rem] truncate p-3 font-mono text-xs text-card-foreground/70">{commitments[index]}</td>
+                    <td className="p-3 font-semibold text-card-foreground">{w.amount.toLocaleString()}</td>
+                    <td className={`p-3 font-medium ${eligibility[index] ? "text-success" : "text-destructive"}`}>{eligibility[index] ? "Eligible" : "Outside limit"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+          <div className="space-y-1.5">
+            <Label htmlFor="manual-amount">Offer amount</Label>
+            <Input id="manual-amount" inputMode="numeric" value={manualAmount} onChange={(event) => setManualAmount(event.target.value.replace(/\D/g, ""))} placeholder="e.g. 4250000" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="manual-key">Bidder key (optional)</Label>
+            <Input id="manual-key" value={manualKey} onChange={(event) => setManualKey(event.target.value)} placeholder="evaluator-known key" className="font-mono text-xs" />
+          </div>
+          <div className="flex items-end"><Button variant="outline" className="w-full sm:w-auto" onClick={addManual} disabled={!manualAmount}>Add witness</Button></div>
+        </div>
+      </section>
+
+      <section className="mt-6 rounded-lg border border-border bg-section p-6">
+        <ol className="flex flex-wrap gap-2 text-xs font-semibold">
+          {(["Open", "Evaluating", "Settled"] as const).map((step, index) => {
+            const order = { Open: 0, Evaluating: 1, Settled: 2 } as const;
+            const active = order[enginePhase] >= order[step];
+            return <li key={step} className={`rounded-full px-3 py-1 ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>{index + 1}. {step}</li>;
+          })}
+        </ol>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button onClick={startEvaluation} disabled={witnesses.length === 0 || enginePhase !== "Open"}>Start evaluation</Button>
+          <Button onClick={settleNow} disabled={enginePhase !== "Evaluating"} variant="secondary">Settle with selected winner</Button>
+          <Button onClick={resetEngine} variant="ghost">Reset</Button>
+        </div>
+        {!deadlineReached && <p className="mt-3 text-sm text-warning">The deadline has not passed in this workbench clock, so the circuit will refuse evaluation until closing.</p>}
+        {enginePhase === "Evaluating" && <p className="mt-3 text-sm text-muted-foreground">{engineCommitments.length} commitments locked for proof. Selecting a non-optimal winner will fail closed with NOT_MAXIMUM / NOT_MINIMUM.</p>}
+        {failure && <p className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{failure}</p>}
+      </section>
+
+      {receipt && (
+        <section className="mt-6 rounded-lg border border-success/30 bg-card p-6">
+          <p className="flex items-center gap-2 font-display text-xl font-semibold text-foreground"><ShieldCheck className="size-5 text-success" />Settlement receipt</p>
+          <dl className="mt-4 grid gap-4 border-t border-border pt-4 text-sm sm:grid-cols-2">
+            <div className="min-w-0"><dt className="text-xs text-card-foreground/60">Winner commitment</dt><dd className="mt-1 break-all font-mono text-xs text-card-foreground">{receipt.winnerCommitment}</dd></div>
+            <div><dt className="text-xs text-card-foreground/60">Clearing value</dt><dd className="mt-1 font-display text-2xl font-semibold text-card-foreground">{receipt.winningValue.toLocaleString()} credits</dd></div>
+            <div className="min-w-0"><dt className="text-xs text-card-foreground/60">Comparison root</dt><dd className="mt-1 break-all font-mono text-xs text-card-foreground">{receipt.comparisonRoot}</dd></div>
+            <div><dt className="text-xs text-card-foreground/60">Settled at</dt><dd className="mt-1 font-semibold text-card-foreground">{formatMoment(receipt.settledAt)} · {witnesses.length} bids proven</dd></div>
+          </dl>
+          <ul className="mt-4 space-y-2 text-sm">
+            <li className="flex items-center gap-2 text-card-foreground/80"><Check className="size-4 text-success" />Winner membership proven against {engineCommitments.length} commitments</li>
+            <li className="flex items-center gap-2 text-card-foreground/80"><Check className="size-4 text-success" />Ordering ({tender.mode}) and reserve / ceiling policy satisfied</li>
+            <li className="flex items-center gap-2 text-card-foreground/80"><Check className="size-4 text-success" />{losingRedacted ? "Losing amounts absent from the public receipt" : "Receipt discloses only the winning value"}</li>
+          </ul>
+        </section>
+      )}
+
+      {history.length > 0 && (
+        <section className="mt-6 rounded-lg border border-border bg-card p-6">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-display text-xl font-semibold text-card-foreground">Recent settlements</h2>
+            <Button size="sm" variant="ghost" onClick={() => setHistory([])}>Clear</Button>
+          </div>
+          <div className="mt-4 space-y-3">
+            {history.map((record) => (
+              <article key={`${record.winnerCommitment}-${record.settledAt}`} className="rounded-md border border-border p-4 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-semibold text-card-foreground">{record.tenderTitle}</p>
+                  <p className="font-display font-semibold text-primary">{Number(record.winningValue).toLocaleString()} credits</p>
+                </div>
+                <p className="mt-1 break-all font-mono text-xs text-card-foreground/60">{record.winnerCommitment} · {record.bidCount} bids · {formatMoment(record.settledAt)}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
 function Results() {
   const completed = initialTenders.filter((tender) => tender.status !== "Active");
   return <div className="mx-auto max-w-5xl px-5 py-12 sm:py-16"><p className="text-sm font-semibold text-primary">Transparent outcomes</p><h1 className="mt-2 font-display text-4xl font-semibold text-foreground">Tender results</h1><p className="mt-3 max-w-2xl leading-7 text-muted-foreground">See which tenders are being reviewed and which have finished. Losing offers remain private.</p><div className="mt-8 space-y-4">{completed.map((tender) => <article key={tender.id} className="rounded-lg border border-border bg-card p-5"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><StatusPill status={tender.status} /><h2 className="mt-3 font-display text-xl font-semibold text-card-foreground">{tender.title}</h2><p className="mt-1 text-sm text-card-foreground/70">{tender.issuer}</p></div><div className="sm:text-right"><p className="text-xs text-card-foreground/60">Outcome</p><p className="mt-1 font-semibold text-card-foreground">{tender.status === "Settled" ? "Winner confirmed" : "Review in progress"}</p></div></div><div className="mt-4 flex items-center gap-2 border-t border-border pt-4 text-sm text-card-foreground/70"><ShieldCheck className="size-4 text-success" />Selection rules verified; non-winning prices stay hidden.</div></article>)}</div></div>;
@@ -536,6 +901,7 @@ function SiteFooter({ onNavigate, chain }: { onNavigate: (page: Page) => void; c
     { id: "tenders", label: "Open tenders" },
     { id: "bids", label: "Bid history" },
     { id: "compare", label: "Compare bids" },
+    { id: "settle", label: "Settlement" },
     { id: "balance", label: "Wallet balance" },
   ];
   const learnLinks: { id: Page; label: string }[] = [
@@ -647,6 +1013,7 @@ export function AegisUserApp() {
     {page === "bid" && <BidPage wallet={wallet} tender={selected} onBack={() => navigate("tenders")} onSubmit={(bid) => { setBids((items) => [bid, ...items]); navigate("bids"); }} />}
     {page === "bids" && <BidHistory bids={bids} onBrowse={() => navigate("tenders")} onClear={() => setBids([])} />}
     {page === "compare" && <ComparePage bids={bids} tenders={chain.tenders} />}
+    {page === "settle" && <SettlementPage bids={bids} tenders={chain.tenders} />}
     {page === "balance" && <BalancePage wallet={wallet} />}
     {page === "results" && <Results />}
     {page === "about" && <HowItWorks />}

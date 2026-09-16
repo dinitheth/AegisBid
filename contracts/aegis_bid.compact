@@ -8,7 +8,9 @@
 //
 // Privacy boundary: raw bid amounts, salts, and identity secrets enter only
 // via witnesses. Public ledger state carries commitments, nullifiers, phase,
-// and the settlement receipt. The winning value leaves via disclose() only.
+// and the settlement receipt. Bid commitments use persistentCommit (salt blinds
+// the value, no disclose needed); nullifiers are disclosed persistentHash
+// values (deterministic by design); the winning value leaves via disclose().
 pragma language_version >= 0.16;
 
 import CompactStandardLibrary;
@@ -64,10 +66,12 @@ export circuit submitBid(
   const amount = localBidAmount();
   const salt = localBidSalt();
   const identity = localIdentitySecret();
-  const identityNullifier = persistentHash(identity, tender.issuer);
+  // Deterministic nullifier: a disclosed hash (no randomness by design).
+  const identityNullifier = disclose(persistentHash([identity, tender.issuer]));
   assert(!nullifiers.member(identityNullifier), "IDENTITY_ALREADY_USED");
 
-  const commitment = persistentHash(amount, salt, bidderPublicKey);
+  // Hiding commitment: persistentCommit blinds (amount, key) with the random salt.
+  const commitment = persistentCommit([amount, bidderPublicKey], salt);
   assert(!commitments.member(commitment), "DUPLICATE_COMMITMENT");
 
   commitments.insert(commitment, true);
@@ -88,25 +92,29 @@ export circuit settle(
   now: Uint<64>
 ): SettlementReceipt {
   assert(phase == TenderPhase.Evaluating, "NOT_EVALUATING");
-  assert(bidCount == commitmentCount, "INCOMPLETE_BID_SET");
+  assert(bidCount == commitmentCount.read(), "INCOMPLETE_BID_SET");
 
   const winningAmount = settlementBid(winningIndex);
   const winningSalt = settlementSalt(winningIndex);
   const winningKey = settlementKey(winningIndex);
-  const winnerCommitment = persistentHash(winningAmount, winningSalt, winningKey);
+  const winnerCommitment = persistentCommit([winningAmount, winningKey], winningSalt);
   assert(commitments.lookup(winnerCommitment), "UNKNOWN_WINNER");
 
-  for (let i = 0; i < bidCount; i = i + 1) {
-    const candidateAmount = settlementBid(i);
-    const candidateSalt = settlementSalt(i);
-    const candidateKey = settlementKey(i);
-    const candidateCommitment = persistentHash(candidateAmount, candidateSalt, candidateKey);
-    assert(commitments.lookup(candidateCommitment), "UNCOMMITTED_BID");
+  // Bounded loop: Compact requires a constant bound, so iterate to MAX_BIDS
+  // and only check indices below the runtime bidCount.
+  for (let i = 0; i < 64; i = i + 1) {
+    if (i < bidCount) {
+      const candidateAmount = settlementBid(i);
+      const candidateSalt = settlementSalt(i);
+      const candidateKey = settlementKey(i);
+      const candidateCommitment = persistentCommit([candidateAmount, candidateKey], candidateSalt);
+      assert(commitments.lookup(candidateCommitment), "UNCOMMITTED_BID");
 
-    if (tender.mode == TenderMode.HighestBid) {
-      assert(winningAmount >= candidateAmount, "NOT_MAXIMUM");
-    } else {
-      assert(winningAmount <= candidateAmount, "NOT_MINIMUM");
+      if (tender.mode == TenderMode.HighestBid) {
+        assert(winningAmount >= candidateAmount, "NOT_MAXIMUM");
+      } else {
+        assert(winningAmount <= candidateAmount, "NOT_MINIMUM");
+      }
     }
   }
 
@@ -118,7 +126,7 @@ export circuit settle(
   const receipt = SettlementReceipt {
     winnerCommitment,
     winningValue: disclose(winningAmount),
-    comparisonRoot: persistentHash(winnerCommitment, bidCount, tender.specificationRoot),
+    comparisonRoot: persistentHash([winnerCommitment, bidCount, tender.specificationRoot]),
     settledAt: now
   };
   settlement = some(receipt);

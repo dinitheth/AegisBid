@@ -109,7 +109,7 @@ export function normalizeStoredBids(raw: unknown): StoredBid[] {
 
 export const proofStages = [
   ["Witness binding", "Private inputs loaded into local proving context"],
-  ["Commitment synthesis", "Poseidon-compatible commitment constraints generated"],
+  ["Commitment synthesis", "SHA-256 model of the persistentCommit binding (workbench only)"],
   ["Eligibility circuit", "Deadline, nullifier and tender policy constraints evaluated"],
   ["Proof construction", "Zero-knowledge transcript produced locally"],
   ["Ledger submission", "Commitment and proof receipt accepted by public state"],

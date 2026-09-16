@@ -30,14 +30,20 @@ Buildathon: **Build Privacy-First Apps on Midnight**
 
 ## Judging rubric coverage
 
-| Criterion (weight) | Evidence |
+> Weights below are the team's working map from the program materials.
+> Confirm against the official "Midnight Buildathon Judging Rubric" link in
+> the AKINDO Rules section before submitting — the hard gates are: contract
+> compiles, private-state management, dual-ledger understanding, organized
+> repo + clear README.
+
+| Criterion (working weight) | Evidence |
 |---|---|
-| Engineering 40% | Contract + `tenderEngine.ts` spec, dual-ledger boundary, both modes |
-| QA 15% | `npm test` — 13 invariants green; in-app QA runner |
-| Product & Vision 15% | README + deck slides 2–3, 7 |
-| UX 15% | Guided bidder flow, explorer, settlement views |
-| Communication 10% | Deck + 90-second demo video |
-| BD & Viability 5% | Deck slide 7, README adoption path |
+| Engineering | Contract + `tenderEngine.ts` spec + `evaluator.ts` adapter, dual-ledger boundary, both modes, `persistentCommit`/`disclose` correctly applied |
+| QA | `bun run test` — 18 invariants green; `bun run compact:check` — 24 gates green; Settlement page enforces the same rejections live |
+| Product & Vision | README + deck slides 2–3, 7 |
+| UX | Guided bidder flow, explorer, settlement views |
+| Communication | Deck + 90-second demo video |
+| BD & Viability | Deck slide 7, README adoption path |
 
 ## Wave 2 / 3 follow-ups
 

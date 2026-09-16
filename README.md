@@ -8,15 +8,15 @@ AegisBid is a zero-knowledge shielded tender and sealed-bid protocol designed fo
 
 ```bash
 bun install        # or: npm install
-bun run test       # 13 protocol invariants (Vitest) — must be green
-bun run compact:check  # 19 contract structural gates — must pass
+bun run test       # 18 protocol invariants (Vitest) — must be green
+bun run compact:check  # 24 contract structural gates — must pass
 bun run dev        # open the printed local URL
 ```
 
 - Contract: [`contracts/aegis_bid.compact`](contracts/aegis_bid.compact), Compact language 0.16 baseline — see [`contracts/COMPACT_TOOLCHAIN.md`](contracts/COMPACT_TOOLCHAIN.md) for the pinned references and full-compile instructions.
-- Executable spec of the circuits: [`src/features/aegis/tenderEngine.ts`](src/features/aegis/tenderEngine.ts), asserted by [`tenderEngine.test.ts`](src/features/aegis/tenderEngine.test.ts), [`hash.test.ts`](src/features/aegis/hash.test.ts), [`storedBids.test.ts`](src/features/aegis/storedBids.test.ts).
-- Bid commitments in the UI are SHA-256 bindings (`amount:salt:key`) from the same engine — see `BidPage` in [`src/features/aegis/AegisUserApp.tsx`](src/features/aegis/AegisUserApp.tsx).
-- Submission pack: [`docs/pitch-deck.md`](docs/pitch-deck.md), [`docs/demo-script.md`](docs/demo-script.md), [`docs/submission-checklist.md`](docs/submission-checklist.md).
+- Executable spec of the circuits: [`src/features/aegis/tenderEngine.ts`](src/features/aegis/tenderEngine.ts), asserted by [`tenderEngine.test.ts`](src/features/aegis/tenderEngine.test.ts), [`hash.test.ts`](src/features/aegis/hash.test.ts), [`storedBids.test.ts`](src/features/aegis/storedBids.test.ts), [`evaluator.test.ts`](src/features/aegis/evaluator.test.ts). UI tender-to-engine mapping lives in [`src/features/aegis/evaluator.ts`](src/features/aegis/evaluator.ts).
+- Bid commitments in the UI are SHA-256 bindings (`amount:salt:key`) modeling the contract's `persistentCommit` (salt blinds the value) — see `BidPage` in [`src/features/aegis/AegisUserApp.tsx`](src/features/aegis/AegisUserApp.tsx). The workbench does not claim SHA-256 is the on-chain primitive.
+- Submission pack: [`docs/WAVE1-SUBMISSION.md`](docs/WAVE1-SUBMISSION.md), [`docs/pitch-deck.md`](docs/pitch-deck.md), [`docs/demo-script.md`](docs/demo-script.md), [`docs/submission-checklist.md`](docs/submission-checklist.md).
 - License: Apache-2.0 (`LICENSE`). Repo topic `midnightntwrk` is set.
 
 ## Why shielded tenders
@@ -74,9 +74,9 @@ The production-shaped reference contract is [`contracts/aegis_bid.compact`](cont
 | `TenderConfig` | Deadline, mode, reserve and specification root | Public |
 | `commitments` | Binding hashes of private bids | Public |
 | `nullifiers` | One-submission identity protection | Public |
-| `localBidAmount`, `localBidSalt` | Bid witnesses resolved by the DApp | Private |
-| `submitBid` | Deadline, uniqueness and commitment circuit | ZK proof |
-| `settle` | Membership, comparison and policy circuit | ZK proof |
+| `localBidAmount`, `localBidSalt`, `localIdentitySecret` | Bid witnesses resolved by the DApp | Private |
+| `submitBid` | Deadline, nullifier uniqueness, `persistentCommit` binding circuit | ZK proof |
+| `settle` | Membership, constant-bounded pairwise ordering and reserve/ceiling circuit | ZK proof |
 | `SettlementReceipt` | Winner commitment and explicit public outputs | Public |
 
 Compact is evolving. Pin a compiler release and reconcile syntax with that release before deployment. The contract is intentionally presented as production-shaped reference code rather than a claim of audited, mainnet-ready bytecode.
@@ -112,13 +112,13 @@ Open `http://localhost:8080`.
 
 The interface includes:
 
-1. a filterable tender explorer and tender creation dialog;
+1. a filterable tender explorer with optional live Midnight indexer settings;
 2. a shielded bid terminal with deterministic local commitment generation;
-3. a private/public scope inspector;
-4. a staged local proof visualizer;
-5. confidential winner verification and comparison receipts;
-6. a line-numbered Compact source explorer;
-7. deterministic QA simulations with assertions and logs.
+3. bid history with sealed references stored on this device;
+4. a reserve / ceiling comparison view with eligibility checks;
+5. an evaluator settlement flow (`beginEvaluation` + `settle` via `tenderEngine.ts`) with receipts and history;
+6. a Midnight wallet balance view (Lace Midnight connector);
+7. results and plain-language how-it-works views.
 
 ## Midnight local development
 
@@ -157,7 +157,7 @@ For network-level tests, repeat these cases through generated bindings against `
 
 ## Tests
 
-Automated suite — Vitest, 13 tests, all passing:
+Automated suite — Vitest, 18 tests, all passing:
 
 ```bash
 bun run test         # run once
@@ -169,6 +169,7 @@ bun run test:watch   # watch mode
 | `src/features/aegis/hash.test.ts` | SHA-256 matches FIPS 180-4 vectors, deterministic |
 | `src/features/aegis/tenderEngine.test.ts` | Three-party sealed bid (winner disclosed, losers redacted); under-reserve, post-deadline, duplicate-identity, non-optimal-winner, and incomplete-bid-set rejections; lowest-compliant ceiling mode |
 | `src/features/aegis/storedBids.test.ts` | Legacy stored-bid migration; UI commitments match the protocol engine |
+| `src/features/aegis/evaluator.test.ts` | UI-tender to engine config mapping, stored-bid to witness conversion, adapter `beginEvaluation` + `settle` flow, non-optimal / under-reserve rejections |
 
 Negative tests verify that rejected operations do not mutate state. Cases map
 directly to the contract invariants (`tenderEngine.ts` mirrors

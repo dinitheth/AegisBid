@@ -25,7 +25,8 @@ is optimal and policy-compliant." Point at winner commitment, clearing
 value, comparison root. "Losing values stay redacted."
 
 **1:15–1:30 — Prove it.**
-Run `npm test` in a terminal (13 green) and/or the in-app QA runner.
+Run `bun run test` in a terminal (18 green) and `bun run compact:check`
+(24 gates). Open the Settlement page and settle the demo offers.
 "Every invariant — sealed winner, reserve rejection, deadline rejection —
 is asserted by automated tests." Close with repo + contact.
 

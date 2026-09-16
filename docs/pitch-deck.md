@@ -53,11 +53,15 @@ Public state: `tender`, `phase`, `commitmentCount`, `commitments`,
 ## 6. Technical depth
 
 - `contracts/aegis_bid.compact` — Compact language 0.16 baseline,
-  `npm run compact:check` structural gate (19 checks).
+  `npm run compact:check` structural gate (24 checks: pragma, ledger,
+  witnesses, circuits, `persistentCommit` hiding, disclosed nullifier,
+  single-tuple `persistentHash`, constant-bounded settle loop,
+  `Counter.read()`, guards).
 - `src/features/aegis/tenderEngine.ts` — deterministic executable spec of
-  the circuits; `npm test` asserts 13 invariants (sealed-bid, reserve
-  rejection, deadline rejection, double-identity prevention, ceiling
-  procurement, non-optimal/incomplete rejection).
+  the circuits (SHA-256 models `persistentCommit`); `npm test` asserts 18
+  invariants (sealed-bid, reserve rejection, deadline rejection,
+  double-identity prevention, ceiling procurement,
+  non-optimal/incomplete rejection, plus 5 evaluator-adapter cases).
 - Supports highest-bid AND lowest-compliant procurement modes.
 
 ## 7. Market & adoption path
