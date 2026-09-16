@@ -161,9 +161,16 @@ try {
   );
 }
 
-const bindings = await import(pathToFileURL(path.join(outDir, "contract", "index.js")).href).catch(
-  () => undefined,
-);
+let bindings;
+try {
+  bindings = await import(pathToFileURL(path.join(outDir, "contract", "index.js")).href);
+} catch (error) {
+  fail(
+    `cannot load generated bindings at ${outDir}/contract/index.js ` +
+      `(${error instanceof Error ? error.message : error}). ` +
+      `Check @midnight-ntwrk/compact-runtime matches the info file (runtime 0.16.0 per support matrix).`,
+  );
+}
 const Contract = bindings?.Contract;
 const TenderMode = bindings?.TenderMode;
 const ledger = bindings?.ledger;
