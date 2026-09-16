@@ -105,7 +105,9 @@ export circuit settle(
   // Larger bid sets fail closed via TOO_MANY_BIDS instead of going unchecked.
   assert(bidCount <= 64, "TOO_MANY_BIDS");
   for (const i of 0 .. 64) {
-    if (i < bidCount) {
+    // bidCount is asserted equal to the public commitmentCount, so the
+    // branch condition is public information and explicitly disclosed.
+    if (disclose(i < bidCount)) {
       const candidateAmount = settlementBid(i);
       const candidateSalt = settlementSalt(i);
       const candidateKey = settlementKey(i);
