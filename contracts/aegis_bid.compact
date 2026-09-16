@@ -52,7 +52,7 @@ witness settlementKey(index: Uint<16>): Bytes<32>;
 constructor(config: TenderConfig) {
   tender = config;
   phase = TenderPhase.Open;
-  commitmentCount = 0;
+  // commitmentCount is a Counter and defaults to 0 (`=` is undefined for it).
   settlement = none<SettlementReceipt>();
 }
 
