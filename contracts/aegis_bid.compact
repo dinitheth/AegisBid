@@ -1,0 +1,116 @@
+pragma language_version >= 0.16;
+
+import CompactStandardLibrary;
+
+export enum TenderMode { HighestBid, LowestCompliant }
+export enum TenderPhase { Open, Evaluating, Settled, Cancelled }
+
+export struct TenderConfig {
+  issuer: Bytes<32>;
+  deadline: Uint<64>;
+  reserve: Uint<128>;
+  mode: TenderMode;
+  specificationRoot: Bytes<32>;
+}
+
+export struct SettlementReceipt {
+  winnerCommitment: Bytes<32>;
+  winningValue: Uint<128>;
+  comparisonRoot: Bytes<32>;
+  settledAt: Uint<64>;
+}
+
+// Public Midnight ledger: raw bids and bidder identities never enter this state.
+export ledger tender: TenderConfig;
+export ledger phase: TenderPhase;
+export ledger commitmentCount: Counter;
+export ledger commitments: Map<Bytes<32>, Boolean>;
+export ledger nullifiers: Set<Bytes<32>>;
+export ledger settlement: Maybe<SettlementReceipt>;
+
+// Private inputs are resolved by the DApp's TypeScript witness provider.
+witness localBidAmount(): Uint<128>;
+witness localBidSalt(): Bytes<32>;
+witness localIdentitySecret(): Bytes<32>;
+witness settlementBid(index: Uint<16>): Uint<128>;
+witness settlementSalt(index: Uint<16>): Bytes<32>;
+witness settlementKey(index: Uint<16>): Bytes<32>;
+
+constructor(config: TenderConfig) {
+  tender = config;
+  phase = TenderPhase.Open;
+  commitmentCount = 0;
+  settlement = none<SettlementReceipt>();
+}
+
+export circuit submitBid(
+  bidderPublicKey: Bytes<32>,
+  now: Uint<64>
+): Bytes<32> {
+  assert(phase == TenderPhase.Open, "TENDER_NOT_OPEN");
+  assert(now < tender.deadline, "DEADLINE_ELAPSED");
+
+  const amount = localBidAmount();
+  const salt = localBidSalt();
+  const identity = localIdentitySecret();
+  const identityNullifier = persistentHash(identity, tender.issuer);
+  assert(!nullifiers.member(identityNullifier), "IDENTITY_ALREADY_USED");
+
+  const commitment = persistentHash(amount, salt, bidderPublicKey);
+  assert(!commitments.member(commitment), "DUPLICATE_COMMITMENT");
+
+  commitments.insert(commitment, true);
+  nullifiers.insert(identityNullifier);
+  commitmentCount.increment(1);
+  return commitment;
+}
+
+export circuit beginEvaluation(now: Uint<64>): Void {
+  assert(phase == TenderPhase.Open, "TENDER_NOT_OPEN");
+  assert(now >= tender.deadline, "DEADLINE_NOT_REACHED");
+  phase = TenderPhase.Evaluating;
+}
+
+export circuit settle(
+  winningIndex: Uint<16>,
+  bidCount: Uint<16>,
+  now: Uint<64>
+): SettlementReceipt {
+  assert(phase == TenderPhase.Evaluating, "NOT_EVALUATING");
+  assert(bidCount == commitmentCount, "INCOMPLETE_BID_SET");
+
+  const winningAmount = settlementBid(winningIndex);
+  const winningSalt = settlementSalt(winningIndex);
+  const winningKey = settlementKey(winningIndex);
+  const winnerCommitment = persistentHash(winningAmount, winningSalt, winningKey);
+  assert(commitments.lookup(winnerCommitment), "UNKNOWN_WINNER");
+
+  for (let i = 0; i < bidCount; i = i + 1) {
+    const candidateAmount = settlementBid(i);
+    const candidateSalt = settlementSalt(i);
+    const candidateKey = settlementKey(i);
+    const candidateCommitment = persistentHash(candidateAmount, candidateSalt, candidateKey);
+    assert(commitments.lookup(candidateCommitment), "UNCOMMITTED_BID");
+
+    if (tender.mode == TenderMode.HighestBid) {
+      assert(winningAmount >= candidateAmount, "NOT_MAXIMUM");
+    } else {
+      assert(winningAmount <= candidateAmount, "NOT_MINIMUM");
+    }
+  }
+
+  assert(
+    tender.mode == TenderMode.LowestCompliant || winningAmount >= tender.reserve,
+    "RESERVE_NOT_MET"
+  );
+
+  const receipt = SettlementReceipt {
+    winnerCommitment,
+    winningValue: disclose(winningAmount),
+    comparisonRoot: persistentHash(winnerCommitment, bidCount, tender.specificationRoot),
+    settledAt: now
+  };
+  settlement = some(receipt);
+  phase = TenderPhase.Settled;
+  return receipt;
+}
