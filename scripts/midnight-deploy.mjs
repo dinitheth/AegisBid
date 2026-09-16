@@ -26,12 +26,24 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-const args = Object.fromEntries(
-  process.argv.slice(2).map((token) => {
-    const match = token.match(/^--([^=]+)(?:=(.*))?$/);
-    return match ? [match[1], match[2] ?? true] : ["_", token];
-  }),
-);
+const rawArgs = process.argv.slice(2);
+const args = {};
+for (let i = 0; i < rawArgs.length; i += 1) {
+  const token = rawArgs[i];
+  const match = token.match(/^--([^=]+)(?:=(.*))?$/);
+  if (!match) {
+    args._ = [...(args._ ?? []), token];
+    continue;
+  }
+  if (match[2] !== undefined) {
+    args[match[1]] = match[2];
+  } else if (i + 1 < rawArgs.length && !rawArgs[i + 1].startsWith("--")) {
+    args[match[1]] = rawArgs[i + 1];
+    i += 1;
+  } else {
+    args[match[1]] = true;
+  }
+}
 
 const network = args.network ?? "undeployed";
 const localDevDir = path.resolve(root, args["local-dev"] ?? "../midnight-local-dev");
