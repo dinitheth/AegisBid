@@ -41,6 +41,20 @@ MIDNIGHT_COMPACT_BIN=/path/to/midnight-compact npm run compact:check
 #   compact compile contracts/aegis_bid.compact managed/aegis-bid
 ```
 
+## Verified compile (2026-09-16, Ubuntu 24.04 VPS)
+
+- `compact` tool `0.5.2`, toolchain `0.31.1` (`compact update 0.31.1`).
+- Reported versions: compiler `0.31.1`, language `0.23.0`, runtime `0.16.0`.
+- `Compiling 3 circuits` — `submitBid`, `beginEvaluation`, `settle` — all
+  with proofs; outputs `contract/` (JS + `index.d.ts`), `zkir/` (+ `.bzkir`),
+  `keys/` (prover + verifier per circuit), `compiler/contract-info.json`.
+- Fixes the real compiler demanded over structural review: `const` loop
+  bindings, range-form `for (const i of 0 .. 64)` with fail-closed
+  `TOO_MANY_BIDS`, no `=` on `Counter`, explicit generics on
+  `persistentHash` / `persistentCommit` / `some`, `[]` unit return,
+  `disclose()` on every public-by-design value (tender config, nullifier,
+  clearing value, comparison root, timestamp, branch condition).
+
 ## Before a mainnet deployment
 
 Pin an exact compiler release in CI, record `compact --version` output in

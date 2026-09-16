@@ -57,6 +57,31 @@ export function stringToBytes32Hex(value: string): string {
   return `0x${sha256Hex(value)}`;
 }
 
+/** Even-length hex (with or without `0x`) to bytes. Throws on bad input. */
+export function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
+  if (clean.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(clean) || clean.length === 0) {
+    throw new Error("hexToBytes expects non-empty even-length hexadecimal.");
+  }
+  const out = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < out.length; i += 1) {
+    out[i] = Number.parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  }
+  return out;
+}
+
+/**
+ * Maps an arbitrary string to exactly 32 bytes for live `Bytes<32>` fields.
+ * 64-hex inputs are used directly, anything else is SHA-256 hashed.
+ * NOTE: live values derived this way differ from workbench demo strings —
+ * binding is preserved, display bytes are not identical.
+ */
+export function stringToBytes32(value: string): Uint8Array {
+  const clean = value.startsWith("0x") ? value.slice(2) : value;
+  if (clean.length === 64 && /^[0-9a-fA-F]+$/.test(clean)) return hexToBytes(clean);
+  return hexToBytes(sha256Hex(value));
+}
+
 /** Ledger deadlines are seconds since the Unix epoch; the UI works in ms. */
 export function toLedgerDeadlineSeconds(deadlineMs: number): number {
   return Math.floor(deadlineMs / 1000);

@@ -3,7 +3,9 @@ import {
   buildSettlementWitnesses,
   buildSubmitBidWitnesses,
   getDeploymentStatus,
+  hexToBytes,
   loadContractModule,
+  stringToBytes32,
   stringToBytes32Hex,
   toLedgerDeadlineSeconds,
   toLedgerTenderConfig,
@@ -74,7 +76,28 @@ describe("midnight contract wiring", () => {
     expect(() => witnesses.settlementBid({ privateState: null }, 7)).toThrow();
   });
 
-  it("fails bindings load with next steps while uncompiled", async () => {
-    await expect(loadContractModule()).rejects.toThrow(/managed\/aegis-bid/);
+  it("converts hex to bytes and rejects bad input", () => {
+    expect(hexToBytes("0x00ff")).toEqual(new Uint8Array([0, 255]));
+    expect(hexToBytes("00ff")).toEqual(new Uint8Array([0, 255]));
+    expect(() => hexToBytes("0x0")).toThrow();
+    expect(() => hexToBytes("0xzz")).toThrow();
+    expect(() => hexToBytes("")).toThrow();
+  });
+
+  it("maps strings to 32 live bytes", () => {
+    const hashed = stringToBytes32("North Sea Energy Authority");
+    expect(hashed).toHaveLength(32);
+    expect(stringToBytes32("North Sea Energy Authority")).toEqual(hashed);
+    const direct = stringToBytes32(`0x${"ab".repeat(32)}`);
+    expect(direct).toEqual(new Uint8Array(32).fill(0xab));
+  });
+
+  it("loads bindings when compiled, else explains how to compile", async () => {
+    try {
+      const mod = (await loadContractModule()) as { Contract?: unknown };
+      expect(mod.Contract).toBeDefined();
+    } catch (error) {
+      expect((error as Error).message).toContain("managed/aegis-bid");
+    }
   });
 });
