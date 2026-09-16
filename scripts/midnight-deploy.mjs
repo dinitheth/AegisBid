@@ -121,15 +121,9 @@ if (network === "mainnet") fail("mainnet deploys are out of scope for this scrip
 console.log(`network: ${network} (local-dev helpers: ${localDevDir})`);
 
 // — phase 3: providers (docs pattern, inside midnight-local-dev context) ----
-// midnight-local-dev sources are TypeScript: enable the tsx loader so plain
-// `node` can import them. tsx is a loader only (no runtime classes), so it
-// cannot cause SDK identity skew.
-try {
-  const { register } = await import("node:module");
-  register("tsx/esm", pathToFileURL(path.join(root, "scripts", "midnight-deploy.mjs")));
-} catch {
-  fail("tsx loader missing: npm install --no-save tsx (see docs/MIDNIGHT_INTEGRATION.md).");
-}
+// midnight-local-dev sources are TypeScript: run this script with the tsx
+// loader (`node --import tsx/esm`, see package.json deploy scripts). tsx is a
+// loader only (no runtime classes), so it cannot cause SDK identity skew.
 
 let walletHelpers;
 try {
