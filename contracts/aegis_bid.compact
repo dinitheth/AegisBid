@@ -80,7 +80,7 @@ export circuit submitBid(
   return commitment;
 }
 
-export circuit beginEvaluation(now: Uint<64>): Void {
+export circuit beginEvaluation(now: Uint<64>): [] {
   assert(phase == TenderPhase.Open, "TENDER_NOT_OPEN");
   assert(now >= tender.deadline, "DEADLINE_NOT_REACHED");
   phase = TenderPhase.Evaluating;
