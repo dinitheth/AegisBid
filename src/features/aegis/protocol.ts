@@ -23,6 +23,12 @@ export const initialTenders: Tender[] = [
   { id: "AGB-2026-027", title: "Carbon removal tranche 08", issuer: "Climate Reserve DAO", deadline: "2026-08-28T12:00:00Z", threshold: "Reserve 880K tDUST", commitments: 17, status: "Settled", mode: "Highest bid", specification: "Verified removal units · vintage 2027" },
 ];
 
+/**
+ * DISPLAY-ONLY truncated hash for receipts and short labels.
+ * NOT a binding commitment: it is FNV-1a, non-cryptographic, and must never
+ * be presented as the protocol commitment. Binding commitments are derived
+ * via `makeCommitment` in `tenderEngine.ts` (SHA-256 over amount:salt:key).
+ */
 export const shortHash = (seed: string) => {
   let a = 0x811c9dc5;
   for (let i = 0; i < seed.length; i += 1) a = Math.imul(a ^ seed.charCodeAt(i), 16777619);
@@ -43,6 +49,63 @@ export const formatCountdown = (deadline: string) => {
   const hours = Math.floor(delta / 3_600_000);
   return `${Math.floor(hours / 24)}d ${hours % 24}h`;
 };
+
+/**
+ * A bid recorded on this device. `commitment` MUST be a `makeCommitment`
+ * (tenderEngine.ts) value over (`amount`, `salt`, `bidderKey`); older
+ * locally stored entries predate `salt`/`bidderKey` and are migrated by
+ * `normalizeStoredBids`.
+ */
+export type StoredBid = {
+  tenderId: string;
+  tenderTitle: string;
+  tenderStatus: Tender["status"];
+  amount: string;
+  receipt: string;
+  commitment: string;
+  salt: string;
+  bidderKey: string;
+  submittedAt: number;
+  accepted: boolean;
+  note: string;
+  onChain: boolean;
+};
+
+/** Tolerantly normalize untrusted localStorage data into StoredBid records. */
+export function normalizeStoredBids(raw: unknown): StoredBid[] {
+  if (!Array.isArray(raw)) return [];
+  const bids: StoredBid[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const record = entry as Record<string, unknown>;
+    if (
+      typeof record["tenderId"] !== "string" ||
+      typeof record["tenderTitle"] !== "string" ||
+      typeof record["amount"] !== "string" ||
+      typeof record["commitment"] !== "string" ||
+      typeof record["submittedAt"] !== "number"
+    ) {
+      continue;
+    }
+    const status = record["tenderStatus"];
+    bids.push({
+      tenderId: record["tenderId"] as string,
+      tenderTitle: record["tenderTitle"] as string,
+      tenderStatus: status === "Active" || status === "Evaluating" || status === "Settled" ? status : "Active",
+      amount: record["amount"] as string,
+      receipt:
+        typeof record["receipt"] === "string" ? (record["receipt"] as string) : (record["commitment"] as string),
+      commitment: record["commitment"] as string,
+      salt: typeof record["salt"] === "string" ? (record["salt"] as string) : "",
+      bidderKey: typeof record["bidderKey"] === "string" ? (record["bidderKey"] as string) : "",
+      submittedAt: record["submittedAt"] as number,
+      accepted: record["accepted"] === true,
+      note: typeof record["note"] === "string" ? (record["note"] as string) : "",
+      onChain: record["onChain"] === true,
+    });
+  }
+  return bids;
+}
 
 export const proofStages = [
   ["Witness binding", "Private inputs loaded into local proving context"],

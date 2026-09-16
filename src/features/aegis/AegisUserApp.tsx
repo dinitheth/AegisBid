@@ -16,25 +16,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { defaultTender, formatCountdown, initialTenders, shortHash, type Tender } from "./protocol";
+import { defaultTender, formatCountdown, generateNonce, initialTenders, normalizeStoredBids, type StoredBid, type Tender } from "./protocol";
+import { makeCommitment } from "./tenderEngine";
 import { useMidnightWallet } from "./wallet";
 import { getChainConfig, isConfigured } from "./chain";
 import { useChainTenders, type ChainTenders } from "./useChainTenders";
 import logo from "@/assets/aegisbid-logo.png";
 
 type Page = "home" | "tenders" | "bid" | "bids" | "compare" | "balance" | "results" | "about";
-type SubmittedBid = {
-  tenderId: string;
-  tenderTitle: string;
-  tenderStatus: Tender["status"];
-  amount: string;
-  receipt: string;
-  commitment: string;
-  submittedAt: number;
-  accepted: boolean;
-  note: string;
-  onChain: boolean;
-};
+type SubmittedBid = StoredBid;
 type WalletState = ReturnType<typeof useMidnightWallet>;
 
 const BID_STORAGE_KEY = "aegis-bid-history";
@@ -44,7 +34,7 @@ function loadBids(): SubmittedBid[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(BID_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as SubmittedBid[]) : [];
+    return normalizeStoredBids(raw ? (JSON.parse(raw) as unknown) : []);
   } catch {
     return [];
   }
@@ -261,13 +251,19 @@ function BidPage({ tender, onBack, onSubmit, wallet }: { tender: Tender; onBack:
     setSending(true);
     setFailure(null);
     const submittedAt = Date.now();
-    const commitment = shortHash(`${tender.id}:${amount}:${submittedAt}`);
+    // Binding commitment via the protocol engine (SHA-256 over amount:salt:key),
+    // matching the `submitBid` commitment model in contracts/aegis_bid.compact.
+    const salt = generateNonce();
+    const bidderKey = wallet.wallet?.address ?? wallet.wallet?.coinPublicKey ?? `local-device:${submittedAt}`;
+    const commitment = makeCommitment(BigInt(amount), salt, bidderKey);
     const base = {
       tenderId: tender.id,
       tenderTitle: tender.title,
       tenderStatus: tender.status,
       amount,
       commitment,
+      salt,
+      bidderKey,
       submittedAt,
     };
     try {
@@ -447,7 +443,8 @@ function ComparePage({ bids, tenders }: { bids: SubmittedBid[]; tenders: Tender[
   const addManual = () => {
     const amount = Number(manualAmount);
     if (!amount) return;
-    setManual((items) => [...items, { label: "Added by you", commitment: shortHash(`manual:${amount}:${items.length}`), amount }]);
+    const salt = generateNonce();
+    setManual((items) => [...items, { label: "Added by you", commitment: makeCommitment(BigInt(amount), salt, `manual-entry:${items.length}`), amount }]);
     setManualAmount("");
   };
 
