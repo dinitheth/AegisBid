@@ -125,11 +125,13 @@ export circuit settle(
     "RESERVE_NOT_MET"
   );
 
+  // `now` and `bidCount` arrive as circuit parameters (tainted), but both are
+  // public by design in the receipt, so they are explicitly disclosed here.
   const receipt = SettlementReceipt {
     winnerCommitment,
     winningValue: disclose(winningAmount),
-    comparisonRoot: persistentHash<[Bytes<32>, Uint<16>, Bytes<32>]>([winnerCommitment, bidCount, tender.specificationRoot]),
-    settledAt: now
+    comparisonRoot: disclose(persistentHash<[Bytes<32>, Uint<16>, Bytes<32>]>([winnerCommitment, bidCount, tender.specificationRoot])),
+    settledAt: disclose(now)
   };
   settlement = some<SettlementReceipt>(receipt);
   phase = TenderPhase.Settled;
