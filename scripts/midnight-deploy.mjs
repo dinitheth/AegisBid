@@ -10,6 +10,9 @@
  *   node scripts/midnight-deploy.mjs --network undeployed [--local-dev ../midnight-local-dev]
  *   node scripts/midnight-deploy.mjs --network preprod --indexer <url> --indexer-ws <url>
  *   node scripts/midnight-deploy.mjs --compile-only      # compile + artifact check, no network
+ *   Flags: --contract <addr> (attach instead of deploy), --e2e (fresh deploy +
+ *   full circuit exercise), --retry-minutes N (default 0 local / 180 public),
+ *   --print-address, --balance, --sync-timeout-ms N.
  *
  * Env:
  *   MIDNIGHT_SEED            64-hex-char wallet seed (required beyond undeployed)
@@ -307,8 +310,18 @@ if (network !== "undeployed" && !process.env.MIDNIGHT_PS_PASSWORD) {
   await closeWallet(ctx).catch(() => undefined);
   fail("public networks need MIDNIGHT_PS_PASSWORD (16+ chars, mixed classes).");
 }
-let contractAddress = "";
-try {
+if (args.contract && e2e) {
+  await closeWallet(ctx).catch(() => undefined);
+  fail("--e2e needs a fresh deployment; --contract attach supports deploy verification only (no e2e calls).");
+}
+// Retry loop: public sync/proving is flaky and DUST matures over time. The
+// wallet lives for the whole process, so sync progress persists across
+// attempts (a fresh process would resync from scratch).
+const retryMinutes = Number(args["retry-minutes"] ?? (network === "undeployed" ? 0 : 180));
+const retryDelayMs = 5 * 60_000;
+const retryUntil = Date.now() + retryMinutes * 60_000;
+let contractAddress = typeof args.contract === "string" ? args.contract : "";
+const attemptOnce = async () => {
   await registerNightForDust(ctx);
   console.log("wallet: registered for DUST");
   const accountId = ctx.unshieldedKeystore.getBech32Address().asString();
@@ -348,14 +361,18 @@ try {
     ),
     outDir,
   );
-  const deployed = await midnight.contracts.deployContract(providers, {
-    compiledContract: compiled,
-    privateStateId: "aegisPrivateState",
-    initialPrivateState: deployPrivateState,
-    args: [ledgerConfig],
-  });
-  contractAddress = deployed.deployTxData.public.contractAddress;
-  console.log(`deployed at ${contractAddress}`);
+  if (!contractAddress) {
+    const deployed = await midnight.contracts.deployContract(providers, {
+      compiledContract: compiled,
+      privateStateId: "aegisPrivateState",
+      initialPrivateState: deployPrivateState,
+      args: [ledgerConfig],
+    });
+    contractAddress = deployed.deployTxData.public.contractAddress;
+    console.log(`deployed at ${contractAddress}`);
+  } else {
+    console.log(`attached to existing contract ${contractAddress}`);
+  }
 
   const found = await midnight.contracts.findDeployedContract(providers, {
     contractAddress,
@@ -411,6 +428,26 @@ try {
       ].join("\n"),
     );
     console.log("recorded receipt in managed/E2E-RECEIPT.txt");
+  }
+};
+
+try {
+  if (!(retryMinutes > 0)) {
+    await attemptOnce();
+  } else {
+    let attempt = 0;
+    for (;;) {
+      attempt += 1;
+      try {
+        await attemptOnce();
+        break;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (Date.now() >= retryUntil) throw error;
+        console.log(`attempt ${attempt} failed (${message}); retrying in 5 min...`);
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      }
+    }
   }
 } finally {
   await closeWallet(ctx).catch(() => undefined);
