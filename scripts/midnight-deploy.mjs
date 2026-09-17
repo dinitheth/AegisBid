@@ -238,6 +238,8 @@ try {
   // MN_NODE_WS at construction: CLI flags win over its localhost defaults.
   if (args.indexer) process.env.MN_INDEXER_URL = args.indexer;
   if (args["indexer-ws"]) process.env.MN_INDEXER_WS = args["indexer-ws"];
+  if (args.node) process.env.MN_NODE_URL = args.node;
+  if (args["node-ws"]) process.env.MN_NODE_WS = args["node-ws"];
   const { StandaloneConfig } = await import(
     pathToFileURL(path.join(localDevDir, "src", "config.ts")).href
   );
@@ -266,6 +268,13 @@ if (network !== "undeployed" && !process.env.MIDNIGHT_PS_PASSWORD) {
 
 midnight.networkId.setNetworkId(network);
 const ctx = await buildWalletFromHexSeed(localConfig, seed);
+
+if (args["print-address"]) {
+  const addr = ctx.unshieldedKeystore.getBech32Address().asString();
+  console.log(`unshielded address (${network}): ${addr}`);
+  await closeWallet(ctx).catch(() => undefined);
+  process.exit(0);
+}
 let contractAddress = "";
 try {
   await registerNightForDust(ctx);
