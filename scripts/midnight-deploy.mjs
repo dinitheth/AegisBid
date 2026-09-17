@@ -290,8 +290,13 @@ if (args["print-address"]) {
 }
 
 if (args.balance) {
-  const { displayWalletBalances } = walletHelpers;
+  const { displayWalletBalances, waitForSync } = walletHelpers;
   if (!displayWalletBalances) fail("local-dev wallet.js lacks displayWalletBalances.");
+  if (waitForSync && !args["no-sync-wait"]) {
+    console.log("waiting for wallet sync to complete...");
+    await waitForSync(ctx.wallet);
+    console.log("sync complete");
+  }
   const balances = await displayWalletBalances(ctx, localConfig);
   console.log(`balances (${network}): ${JSON.stringify(balances)}`);
   await closeWallet(ctx).catch(() => undefined);
