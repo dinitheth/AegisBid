@@ -113,7 +113,9 @@ if (args["compile-only"]) {
 if (!["undeployed", "preview", "preprod", "mainnet"].includes(network)) {
   fail(`unknown --network ${network}; want undeployed|preview|preprod|mainnet.`);
 }
-if (!seed) fail("no wallet seed: export MIDNIGHT_SEED=<64-hex> (required beyond undeployed).");
+if (!seed && !process.env.MIDNIGHT_MNEMONIC) {
+  fail("no wallet secret: export MIDNIGHT_SEED=<64-hex> or MIDNIGHT_MNEMONIC=<words> (required beyond undeployed).");
+}
 if (seed === GENESIS_SEED && network !== "undeployed") {
   fail("the public local-dev seed must never target a shared network.");
 }
@@ -134,7 +136,7 @@ try {
       `Clone https://github.com/midnightntwrk/midnight-local-dev next to this repo and npm install there.`,
   );
 }
-const { buildWalletFromHexSeed, registerNightForDust, closeWallet } = walletHelpers;
+const { buildWallet, buildWalletFromHexSeed, registerNightForDust, closeWallet } = walletHelpers;
 if (!buildWalletFromHexSeed || !registerNightForDust || !closeWallet) {
   fail("local-dev wallet.js lacks buildWalletFromHexSeed/registerNightForDust/closeWallet.");
 }
@@ -273,7 +275,12 @@ if (network !== "undeployed" && (!args.indexer || !args["indexer-ws"])) {
 const psPassword = process.env.MIDNIGHT_PS_PASSWORD ?? "AegisBid-Local-2026!!";
 
 midnight.networkId.setNetworkId(network);
-const ctx = await buildWalletFromHexSeed(localConfig, seed);
+// Throwaway-wallet friendly: MIDNIGHT_MNEMONIC (24 words, env only, never a
+// file) takes precedence over the hex seed. Either way the secret never
+// touches disk or the repo.
+const ctx = process.env.MIDNIGHT_MNEMONIC
+  ? await buildWallet(localConfig, { kind: "mnemonic", value: process.env.MIDNIGHT_MNEMONIC })
+  : await buildWalletFromHexSeed(localConfig, seed);
 
 if (args["print-address"]) {
   const addr = ctx.unshieldedKeystore.getBech32Address().asString();
