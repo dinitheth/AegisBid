@@ -293,8 +293,9 @@ if (args.balance) {
   const { displayWalletBalances, waitForSync } = walletHelpers;
   if (!displayWalletBalances) fail("local-dev wallet.js lacks displayWalletBalances.");
   if (waitForSync && !args["no-sync-wait"]) {
-    console.log("waiting for wallet sync to complete...");
-    await waitForSync(ctx.wallet);
+    const syncTimeout = Number(args["sync-timeout-ms"] ?? 300_000);
+    console.log(`waiting for wallet sync to complete (up to ${Math.round(syncTimeout / 60000)} min)...`);
+    await waitForSync(ctx.wallet, syncTimeout);
     console.log("sync complete");
   }
   const balances = await displayWalletBalances(ctx, localConfig);
