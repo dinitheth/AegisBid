@@ -288,6 +288,15 @@ if (args["print-address"]) {
   await closeWallet(ctx).catch(() => undefined);
   process.exit(0);
 }
+
+if (args.balance) {
+  const { displayWalletBalances } = walletHelpers;
+  if (!displayWalletBalances) fail("local-dev wallet.js lacks displayWalletBalances.");
+  const balances = await displayWalletBalances(ctx, localConfig);
+  console.log(`balances (${network}): ${JSON.stringify(balances)}`);
+  await closeWallet(ctx).catch(() => undefined);
+  process.exit(0);
+}
 if (network !== "undeployed" && !process.env.MIDNIGHT_PS_PASSWORD) {
   await closeWallet(ctx).catch(() => undefined);
   fail("public networks need MIDNIGHT_PS_PASSWORD (16+ chars, mixed classes).");
