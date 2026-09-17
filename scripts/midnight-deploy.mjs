@@ -243,7 +243,16 @@ try {
   const { StandaloneConfig } = await import(
     pathToFileURL(path.join(localDevDir, "src", "config.ts")).href
   );
-  localConfig = new StandaloneConfig();
+  const base = new StandaloneConfig();
+  // StandaloneConfig hardcodes networkId='undeployed' (and setNetworkId's it
+  // in its constructor). For public networks, shadow the network fields while
+  // keeping the prototype (envConfig) intact.
+  localConfig =
+    network === "undeployed"
+      ? base
+      : Object.assign(Object.create(Object.getPrototypeOf(base)), base, {
+          networkId: network,
+        });
 } catch {
   fail(
     `cannot load StandaloneConfig from ${localDevDir}/src/config.ts. ` +
