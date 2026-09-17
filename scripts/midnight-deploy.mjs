@@ -262,9 +262,6 @@ if (network !== "undeployed" && (!args.indexer || !args["indexer-ws"])) {
 }
 
 const psPassword = process.env.MIDNIGHT_PS_PASSWORD ?? "AegisBid-Local-2026!!";
-if (network !== "undeployed" && !process.env.MIDNIGHT_PS_PASSWORD) {
-  fail("public networks need MIDNIGHT_PS_PASSWORD (16+ chars, mixed classes).");
-}
 
 midnight.networkId.setNetworkId(network);
 const ctx = await buildWalletFromHexSeed(localConfig, seed);
@@ -274,6 +271,10 @@ if (args["print-address"]) {
   console.log(`unshielded address (${network}): ${addr}`);
   await closeWallet(ctx).catch(() => undefined);
   process.exit(0);
+}
+if (network !== "undeployed" && !process.env.MIDNIGHT_PS_PASSWORD) {
+  await closeWallet(ctx).catch(() => undefined);
+  fail("public networks need MIDNIGHT_PS_PASSWORD (16+ chars, mixed classes).");
 }
 let contractAddress = "";
 try {
