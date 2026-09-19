@@ -139,9 +139,9 @@ try {
       `Clone https://github.com/midnightntwrk/midnight-local-dev next to this repo and npm install there.`,
   );
 }
-const { buildWallet, buildWalletFromHexSeed, registerNightForDust, closeWallet } = walletHelpers;
-if (!buildWalletFromHexSeed || !registerNightForDust || !closeWallet) {
-  fail("local-dev wallet.js lacks buildWalletFromHexSeed/registerNightForDust/closeWallet.");
+const { buildWallet, registerNightForDust, closeWallet } = walletHelpers;
+if (!buildWallet || !registerNightForDust || !closeWallet) {
+  fail("local-dev wallet.js lacks buildWallet/registerNightForDust/closeWallet.");
 }
 
 let midnight;
@@ -281,9 +281,12 @@ midnight.networkId.setNetworkId(network);
 // Throwaway-wallet friendly: MIDNIGHT_MNEMONIC (24 words, env only, never a
 // file) takes precedence over the hex seed. Either way the secret never
 // touches disk or the repo.
+// buildWallet (not buildWalletFromHexSeed): it returns without an internal
+// full-sync wait, so address/balance modes respond while sync continues in
+// the background. Sync-gated steps (register/deploy) wait explicitly.
 const ctx = process.env.MIDNIGHT_MNEMONIC
   ? await buildWallet(localConfig, { kind: "mnemonic", value: process.env.MIDNIGHT_MNEMONIC })
-  : await buildWalletFromHexSeed(localConfig, seed);
+  : await buildWallet(localConfig, { kind: "seed", value: seed });
 
 if (args["print-address"]) {
   const addr = ctx.unshieldedKeystore.getBech32Address().asString();
