@@ -18,6 +18,11 @@ export default defineConfig({
   // here because its bare 'buffer' rewrite conflicts with the wrapper at
   // build time (UNLOADABLE_DEPENDENCY). wasm() alone matches the ledger's
   // documented Vite requirement.
+  // Self-hosted on a VPS (not Cloudflare): the node-server preset makes the
+  // SSR build resolve node conditions, under which ledger-v8 and friends
+  // export correctly. (The default cloudflare-module target resolves with
+  // workerd conditions that those packages do not provide.)
+  nitro: { preset: "node-server" },
   vite: {
     plugins: [wasm()],
     optimizeDeps: {
@@ -28,14 +33,5 @@ export default defineConfig({
       ],
     },
     build: { target: "esnext" },
-    // ledger-v8 only exports "." under "browser"/"node" conditions, but the
-    // SSR build resolves with workerd conditions. Ledger code only ever runs
-    // in browser event handlers, so resolving the node variant server-side is
-    // safe (it is never executed during SSR).
-    ssr: {
-      resolve: {
-        conditions: ["workerd", "worker", "production", "wasm", "unwasm", "import", "node"],
-      },
-    },
   },
 });
