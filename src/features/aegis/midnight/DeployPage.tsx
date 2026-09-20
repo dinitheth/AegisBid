@@ -10,7 +10,7 @@
  * ZK artifacts come from `VITE_ZK_CONFIG_BASE` (default: jsDelivr for the
  * committed `managed/aegis-bid` outputs).
  */
-import "./polyfills";
+import { ensureBrowserBuffer } from "./polyfills";
 import { useEffect, useState } from "react";
 import { setNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
 import { FetchZkConfigProvider } from "@midnight-ntwrk/midnight-js-fetch-zk-config-provider";
@@ -60,7 +60,7 @@ const ZK_BASE =
   "https://cdn.jsdelivr.net/gh/dinitheth/AegisBid@main/managed/aegis-bid";
 
 // Bump on every deploy-flow change so screenshots identify the bundle.
-const BUILD_ID = "2026-09-20C-buffer-global+stack";
+const BUILD_ID = "2026-09-20D-buffer-call";
 
 const bytesToHex = (bytes: Uint8Array) =>
   Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
@@ -144,6 +144,7 @@ export function DeployPage() {
 
   const deploy = async () => {
     if (!api) return;
+    ensureBrowserBuffer();
     setBusy(true);
     setFailure(null);
     setContractAddress(null);
