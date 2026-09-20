@@ -90,22 +90,27 @@ export function DeployPage() {
   const [contractAddress, setContractAddress] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const [detectTick, setDetectTick] = useState(0);
   useEffect(() => {
     let cancelled = false;
-    let attempts = 0;
-    const timer = window.setInterval(() => {
+    const check = () => {
       const found = detectOneAm();
-      if (found || ++attempts > 50) {
-        window.clearInterval(timer);
-        if (!cancelled && found) setWallet(found);
+      if (!cancelled && found) {
+        setWallet(found);
+        return true;
       }
-    }, 200);
-    setWallet(detectOneAm());
+      return false;
+    };
+    if (check()) return;
+    // 1AM may inject after lock/unlock or install: keep polling softly.
+    const timer = window.setInterval(() => {
+      if (check()) window.clearInterval(timer);
+    }, 1000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [detectTick]);
 
   const connect = async () => {
     if (!wallet) return;
@@ -236,13 +241,19 @@ export function DeployPage() {
       <section className="mt-8 rounded-lg border border-border bg-card p-6">
         <h2 className="font-display text-xl font-semibold text-card-foreground">1 · Connect wallet</h2>
         {!wallet ? (
-          <p className="mt-2 text-sm text-card-foreground/70">
-            1AM wallet not detected. Install it from{" "}
-            <a className="underline" href="https://1am.xyz/install-beta" target="_blank" rel="noreferrer">
-              1am.xyz/install-beta
-            </a>
-            , switch it to preprod, then reload this page.
-          </p>
+          <div className="mt-2 text-sm text-card-foreground/70">
+            <p>
+              1AM wallet not detected yet. Install it from{" "}
+              <a className="underline" href="https://1am.xyz/install-beta" target="_blank" rel="noreferrer">
+                1am.xyz/install-beta
+              </a>
+              , switch it to preprod, unlock it, then{" "}
+              <button className="underline" onClick={() => setDetectTick((n) => n + 1)}>
+                check again
+              </button>
+              . This page keeps listening automatically.
+            </p>
+          </div>
         ) : info && api ? (
           <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-3">
             <div><dt className="text-xs text-card-foreground/60">Network</dt><dd className="mt-1 font-semibold text-card-foreground">{info.networkId}</dd></div>
