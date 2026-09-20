@@ -51,7 +51,7 @@ function shortAddress(address: string) {
   return address.length > 16 ? `${address.slice(0, 8)}...${address.slice(-6)}` : address;
 }
 
-function WalletButton({ wallet }: { wallet: WalletState }) {
+function WalletButton({ wallet, onMissing }: { wallet: WalletState; onMissing: () => void }) {
   if (wallet.connected && wallet.wallet) {
     return (
       <div className="hidden h-10 items-center gap-2 rounded-xl border border-border bg-card/85 px-3 shadow-sm sm:flex">
@@ -64,6 +64,15 @@ function WalletButton({ wallet }: { wallet: WalletState }) {
           <RefreshCw className="size-3.5" />
         </Button>
       </div>
+    );
+  }
+  // No Lace extension here: bridge to the 1AM live-deploy flow instead of a dead button.
+  if (!wallet.available && !wallet.connecting) {
+    return (
+      <Button className="h-10 rounded-xl px-4 shadow-sm" onClick={onMissing}>
+        <Wallet />
+        Connect 1AM
+      </Button>
     );
   }
   return (
@@ -1002,7 +1011,7 @@ export function AegisUserApp() {
             ))}
           </nav>
           <div className="flex shrink-0 items-center gap-1.5">
-            <WalletButton wallet={wallet} />
+            <WalletButton wallet={wallet} onMissing={() => navigate("deploy")} />
             <Button variant="ghost" size="icon" className="xl:hidden" onClick={() => setMenuOpen((value) => !value)} aria-label={menuOpen ? "Close navigation" : "Open navigation"}>{menuOpen ? <X /> : <Menu />}</Button>
           </div>
         </div>
