@@ -36,7 +36,9 @@ declare global {
 
 function connector(): MidnightConnector | undefined {
   if (typeof window === "undefined") return undefined;
-  return window.midnight?.mnLace ?? Object.values(window.midnight ?? {})[0];
+  // Lace only: other wallets (e.g. 1AM) expose a different connector shape
+  // and are handled by the Live deploy page, not this button.
+  return window.midnight?.mnLace;
 }
 
 const NATIVE = "tDUST";
