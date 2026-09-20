@@ -23,6 +23,7 @@ import { useMidnightWallet } from "./wallet";
 import { getChainConfig, isConfigured } from "./chain";
 import { Suspense, lazy } from "react";
 import { useChainTenders, type ChainTenders } from "./useChainTenders";
+import { OneAmWalletProvider, useOneAmWallet } from "./midnight/oneAmWallet";
 import logo from "@/assets/aegisbid-logo.png";
 
 // WASM-backed Midnight modules must never evaluate during SSR (their loader
@@ -59,6 +60,21 @@ function shortAddress(address: string) {
 }
 
 function WalletButton({ wallet, onMissing }: { wallet: WalletState; onMissing: () => void }) {
+  const oneAm = useOneAmWallet();
+  if (oneAm.info) {
+    return (
+      <div className="hidden h-10 items-center gap-2 rounded-xl border border-border bg-card/85 px-3 shadow-sm sm:flex" title={oneAm.info.unshieldedAddress}>
+        <Wallet className="size-4 text-primary" />
+        <div className="leading-tight">
+          <p className="font-mono text-xs text-foreground">{shortAddress(oneAm.info.unshieldedAddress)}</p>
+          <p className="text-[11px] text-muted-foreground">1AM · {oneAm.info.networkId}</p>
+        </div>
+        <Button variant="ghost" size="icon" aria-label="Disconnect 1AM wallet" onClick={oneAm.disconnect}>
+          <X className="size-3.5" />
+        </Button>
+      </div>
+    );
+  }
   if (wallet.connected && wallet.wallet) {
     return (
       <div className="hidden h-10 items-center gap-2 rounded-xl border border-border bg-card/85 px-3 shadow-sm sm:flex">
@@ -1005,7 +1021,7 @@ export function AegisUserApp() {
   const navigate = (next: Page) => { setPage(next); setMenuOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); };
   const openTender = (tender: Tender) => { setSelected(tender); navigate(tender.status === "Active" ? "bid" : "results"); };
   const activeLabel = useMemo(() => navItems.find((item) => item.id === page)?.label, [page]);
-  return <main className="min-h-screen bg-background text-foreground">
+  return <OneAmWalletProvider><main className="min-h-screen bg-background text-foreground">
     <header className="fixed inset-x-0 top-0 z-40 px-3 pt-3 sm:px-5 sm:pt-4">
       <div className="notch-navbar mx-auto max-w-7xl">
         <div className="flex h-16 items-center justify-between gap-3 px-3 sm:px-5">
@@ -1048,5 +1064,5 @@ export function AegisUserApp() {
     {page === "results" && <Results />}
     {page === "about" && <HowItWorks />}
     <SiteFooter onNavigate={navigate} chain={chain} />
-  </main>;
+  </main></OneAmWalletProvider>;
 }

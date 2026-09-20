@@ -26,34 +26,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { hexToBytes, stringToBytes32 } from "./contract";
 
-type OneAmInitialApi = {
-  name?: string;
-  apiVersion?: string;
-  connect: (networkId: string) => Promise<OneAmConnectedApi>;
-};
-
-type OneAmConnectedApi = {
-  getConfiguration: () => Promise<{
-    networkId: string;
-    indexerUri: string;
-    indexerWsUri: string;
-  }>;
-  getShieldedAddresses: () => Promise<{
-    shieldedCoinPublicKey: string;
-    shieldedEncryptionPublicKey: string;
-  }>;
-  getUnshieldedAddress: () => Promise<{ unshieldedAddress: string }>;
-  getDustBalance: () => Promise<{ balance: bigint | number | string }>;
-  getProvingProvider: (keyProvider: unknown) => Promise<unknown>;
-  balanceUnsealedTransaction: (txHex: string) => Promise<{ tx: string }>;
-  submitTransaction: (txHex: string) => Promise<unknown>;
-};
-
-type WalletInfo = {
-  networkId: string;
-  unshieldedAddress: string;
-  dustBalance: string;
-};
+import {
+  detectOneAm,
+  useOneAmWallet,
+  type OneAmInitialApi,
+} from "./oneAmWallet";
 
 const ZK_BASE =
   (import.meta.env["VITE_ZK_CONFIG_BASE"] as string | undefined) ||
@@ -65,15 +42,6 @@ const BUILD_ID = "2026-09-20D-buffer-call";
 const bytesToHex = (bytes: Uint8Array) =>
   Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 
-function detectOneAm(): OneAmInitialApi | null {
-  const injected = (window as unknown as { midnight?: Record<string, unknown> }).midnight?.[
-    "1am"
-  ];
-  if (!injected || typeof injected !== "object") return null;
-  const candidate = injected as Partial<OneAmInitialApi>;
-  return typeof candidate.connect === "function" ? (candidate as OneAmInitialApi) : null;
-}
-
 function defaultDeadlineInput() {
   const date = new Date(Date.now() + 7 * 86_400_000);
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -82,8 +50,7 @@ function defaultDeadlineInput() {
 
 export function DeployPage() {
   const [wallet, setWallet] = useState<OneAmInitialApi | null>(null);
-  const [api, setApi] = useState<OneAmConnectedApi | null>(null);
-  const [info, setInfo] = useState<WalletInfo | null>(null);
+  const { api, info, setConnected } = useOneAmWallet();
   const [issuer, setIssuer] = useState("AegisBid Wave 1 demo issuer");
   const [deadline, setDeadline] = useState(defaultDeadlineInput);
   const [reserve, setReserve] = useState("1000");
@@ -128,8 +95,7 @@ export function DeployPage() {
         connected.getUnshieldedAddress(),
         connected.getDustBalance(),
       ]);
-      setApi(connected);
-      setInfo({
+      setConnected(connected, {
         networkId: config.networkId,
         unshieldedAddress: unshielded.unshieldedAddress,
         dustBalance: String(dust.balance),

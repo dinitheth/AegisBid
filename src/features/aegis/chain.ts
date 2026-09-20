@@ -14,6 +14,23 @@ const STORAGE_KEY = "aegis-chain-config";
 const envIndexer = (import.meta.env['VITE_MIDNIGHT_INDEXER_URL'] as string | undefined) ?? "";
 const envContract = (import.meta.env['VITE_AEGISBID_CONTRACT'] as string | undefined) ?? "";
 
+/**
+ * Flagship deployment: the verified preprod tender. Values below are the
+ * true on-chain parameters (confirmed via the indexer at deploy time), so a
+ * fresh visitor sees the live tender without configuring anything. Override
+ * via Network settings or env vars.
+ */
+export const FLAGSHIP_TENDER = {
+  indexerUrl: "https://indexer.preprod.midnight.network/api/v4/graphql",
+  contractAddress: "daf54fc95751b84c53da2f402aea96e5f23d19185783453ba067c123d89d0fc4",
+  title: "Shielded tender · preprod flagship",
+  issuer: "AegisBid demo issuer",
+  deadline: "2026-09-27T15:52:00Z",
+  threshold: "Reserve 1,000 credits",
+  mode: "Highest bid" as const,
+  specification: "Deployed from the Live deploy page; verified on-chain via the indexer.",
+};
+
 export function getChainConfig(): ChainConfig {
   if (typeof window !== "undefined") {
     try {
@@ -28,7 +45,8 @@ export function getChainConfig(): ChainConfig {
       /* ignore unreadable local settings */
     }
   }
-  return { indexerUrl: envIndexer, contractAddress: envContract };
+  if (envIndexer && envContract) return { indexerUrl: envIndexer, contractAddress: envContract };
+  return { indexerUrl: FLAGSHIP_TENDER.indexerUrl, contractAddress: FLAGSHIP_TENDER.contractAddress };
 }
 
 export function saveChainConfig(config: ChainConfig) {
@@ -146,8 +164,25 @@ export async function fetchChainActivity(config: ChainConfig = getChainConfig())
 export function activityToTenders(activity: ChainActivity): Tender[] {
   const deploys = activity.actions.filter((item) => item.kind.toLowerCase().includes("deploy"));
   const calls = activity.actions.filter((item) => !item.kind.toLowerCase().includes("deploy"));
-  const anchor = deploys[deploys.length - 1] ?? activity.actions[activity.actions.length - 1];
   const settled = activity.actions.some((item) => item.kind.toLowerCase().includes("settle"));
+  if (activity.state.address === FLAGSHIP_TENDER.contractAddress) {
+    // Verified on-chain parameters of the flagship deployment (see
+    // FLAGSHIP_TENDER); only counts and status are read live.
+    return [
+      {
+        id: `${activity.state.address.slice(0, 10)}...${activity.state.address.slice(-6)}`,
+        title: FLAGSHIP_TENDER.title,
+        issuer: FLAGSHIP_TENDER.issuer,
+        deadline: FLAGSHIP_TENDER.deadline,
+        threshold: FLAGSHIP_TENDER.threshold,
+        commitments: calls.length,
+        status: settled ? "Settled" : "Active",
+        mode: FLAGSHIP_TENDER.mode,
+        specification: `${FLAGSHIP_TENDER.specification} Live bid count below.`,
+      },
+    ];
+  }
+  const anchor = deploys[deploys.length - 1] ?? activity.actions[activity.actions.length - 1];
   const deployedAt = anchor?.timestamp ? new Date(anchor.timestamp) : null;
   return [
     {
