@@ -22,9 +22,10 @@ import { buildTenderStateForSettlement, friendlySettlementError, parseReserveToB
 import { useMidnightWallet } from "./wallet";
 import { getChainConfig, isConfigured } from "./chain";
 import { useChainTenders, type ChainTenders } from "./useChainTenders";
+import { DeployPage } from "./midnight/DeployPage";
 import logo from "@/assets/aegisbid-logo.png";
 
-type Page = "home" | "tenders" | "bid" | "bids" | "compare" | "settle" | "balance" | "results" | "about";
+type Page = "home" | "tenders" | "bid" | "bids" | "compare" | "settle" | "deploy" | "balance" | "results" | "about";
 type SubmittedBid = StoredBid;
 type WalletState = ReturnType<typeof useMidnightWallet>;
 
@@ -131,6 +132,7 @@ const navItems: { id: Page; label: string }[] = [
   { id: "bids", label: "Bid history" },
   { id: "compare", label: "Compare bids" },
   { id: "settle", label: "Settlement" },
+  { id: "deploy", label: "Live deploy" },
   { id: "balance", label: "Wallet balance" },
   { id: "results", label: "Results" },
   { id: "about", label: "How it works" },
@@ -902,6 +904,7 @@ function SiteFooter({ onNavigate, chain }: { onNavigate: (page: Page) => void; c
     { id: "bids", label: "Bid history" },
     { id: "compare", label: "Compare bids" },
     { id: "settle", label: "Settlement" },
+    { id: "deploy", label: "Live deploy" },
     { id: "balance", label: "Wallet balance" },
   ];
   const learnLinks: { id: Page; label: string }[] = [
@@ -1014,6 +1017,7 @@ export function AegisUserApp() {
     {page === "bids" && <BidHistory bids={bids} onBrowse={() => navigate("tenders")} onClear={() => setBids([])} />}
     {page === "compare" && <ComparePage bids={bids} tenders={chain.tenders} />}
     {page === "settle" && <SettlementPage bids={bids} tenders={chain.tenders} />}
+    {page === "deploy" && <DeployPage />}
     {page === "balance" && <BalancePage wallet={wallet} />}
     {page === "results" && <Results />}
     {page === "about" && <HowItWorks />}
