@@ -143,22 +143,48 @@ export function DeployPage() {
     setBusy(true);
     setFailure(null);
     setContractAddress(null);
+    let step = "starting";
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    // Key download + proving have no chain effects: safe to retry on 429s.
+    const withRetry = async <T,>(label: string, fn: () => Promise<T>): Promise<T> => {
+      let last: unknown = null;
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+          return await fn();
+        } catch (error) {
+          last = error;
+          const message = error instanceof Error ? error.message : String(error);
+          if (!/rate|429|limit|timeout|network|fetch|econn|socket/i.test(message) || attempt === 3) {
+            throw new Error(`${label}: ${message}`);
+          }
+          setStatus(`Rate-limited during ${label} — retry ${attempt}/3...`);
+          await sleep(attempt * 4000);
+        }
+      }
+      throw new Error(`${label}: ${last instanceof Error ? last.message : String(last)}`);
+    };
     try {
       const config = await api.getConfiguration();
       setNetworkId(config.networkId || "preprod");
 
+      step = "downloading proving keys";
       setStatus("Downloading proving keys (one-time, ~14 MB)...");
       const zkConfigProvider = new FetchZkConfigProvider(ZK_BASE, fetch.bind(window));
       const publicDataProvider = indexerPublicDataProvider(config.indexerUri, config.indexerWsUri);
 
+      step = "waiting for 1AM approval";
       setStatus("Waiting for 1AM approval...");
-      const provingProvider = await api.getProvingProvider(zkConfigProvider);
+      const provingProvider = await withRetry("getProvingProvider", () =>
+        api.getProvingProvider(zkConfigProvider),
+      );
       const proofProvider = {
         async proveTx(unprovenTx: {
           prove: (prover: unknown, cost: unknown) => Promise<unknown>;
         }) {
-          const { CostModel } = await import("@midnight-ntwrk/ledger-v8");
-          return unprovenTx.prove(provingProvider, CostModel.initialCostModel());
+          return withRetry("proving", async () => {
+            const { CostModel } = await import("@midnight-ntwrk/ledger-v8");
+            return unprovenTx.prove(provingProvider, CostModel.initialCostModel());
+          });
         },
       };
       const keys = await api.getShieldedAddresses();
@@ -183,6 +209,7 @@ export function DeployPage() {
         },
       };
 
+      step = "building the deployment transaction";
       setStatus("Building the deployment transaction...");
       const witnesses = {
         localBidAmount: ({ privateState }: { privateState: unknown }) => [privateState, 0n],
@@ -207,6 +234,7 @@ export function DeployPage() {
         specificationRoot: stringToBytes32(spec),
       };
 
+      step = "proving via 1AM (approve in the wallet)";
       setStatus("Proving via 1AM (approve in the wallet)...");
       const deployed = await deployContract(
         {
@@ -223,7 +251,11 @@ export function DeployPage() {
       setContractAddress(deployed.deployTxData.public.contractAddress);
       setStatus(null);
     } catch (cause) {
-      setFailure(cause instanceof Error ? cause.message : "Deployment failed.");
+      const message = cause instanceof Error ? cause.message : "Deployment failed.";
+      const hint = /rate|429|limit/i.test(message)
+        ? " Public infra is throttling — wait a minute and retry."
+        : "";
+      setFailure(`Failed during ${step}: ${message}.${hint}`);
     } finally {
       setBusy(false);
     }
