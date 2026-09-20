@@ -6,7 +6,6 @@
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 import wasm from "vite-plugin-wasm";
-import { nodePolyfills } from "vite-plugin-node-polyfills";
 
 export default defineConfig({
   tanstackStart: {
@@ -14,16 +13,13 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
-  // Midnight ledger WASM needs proper wasm loading + node globals. Mirrors the
-  // working config from 0xfdbu/midnight-apps dapp-connect (Vite + ledger-v8).
+  // Midnight ledger WASM needs proper wasm loading. Buffer/process shims come
+  // from the wrapper's alias handling; nodePolyfills is intentionally NOT used
+  // here because its bare 'buffer' rewrite conflicts with the wrapper at
+  // build time (UNLOADABLE_DEPENDENCY). wasm() alone matches the ledger's
+  // documented Vite requirement.
   vite: {
-    plugins: [
-      wasm(),
-      nodePolyfills({
-        include: ["crypto", "buffer", "events", "stream", "util", "process"],
-        globals: { Buffer: true, process: true },
-      }),
-    ],
+    plugins: [wasm()],
     optimizeDeps: {
       exclude: [
         "@midnight-ntwrk/ledger-v8",
