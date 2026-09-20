@@ -1,12 +1,14 @@
 # AegisBid Midnight integration — real-chain path
 
-> Status: **DEPLOYED on local `undeployed` network (2026-09-16).** Contract
-> `75e339942b5d9f07bd9713b13b12cdf9f10ebf68e487fd894fc8e7a21bdbe390`,
-> exercised end-to-end with real proofs — bid tx `0048722c…` (block 825),
-> evaluate tx `002687c0…`, settle tx `009e088c…`, receipt `winningValue=1200`,
-> phase `Settled`. Reachable via the VPS + SSH tunnels (see
-> `docs/VPS-DEPLOY.md`). Not on preprod / mainnet. This repo contains no
-> generated bindings (`managed/` is local build output).
+> Status: **DEPLOYED on Midnight preprod (2026-09-20).** Contract
+> `daf54fc95751b84c53da2f402aea96e5f23d19185783453ba067c123d89d0fc4`,
+> deploy tx `a7d150207c83adc5d993f5267a4abfaa8115fc81b71091712fa3fa029c4a2fa7`
+> (block #2,634,493). Deployed through the 1AM browser wallet with sponsored
+> fees; on-chain state verified via the indexer (phase Open, reserve 1000,
+> highest-bid, Sep 27 deadline, 0 commitments). Also proven end-to-end on a
+> local devnet (settle receipt `winningValue=1200`). Not on mainnet.
+> Generated bindings are committed under `managed/`; ZK artifacts are served
+> via jsDelivr for the browser deploy flow.
 
 ## What exists today
 

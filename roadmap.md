@@ -17,3 +17,4 @@
 - [x] Prepare Wave 1 submission pack (AKINDO text, judge verification, manual steps)
 - [x] Stage real Midnight integration layer (networks, ledger mapping, witnesses, deploy + status scripts, docs) — NOT DEPLOYED yet
 - [x] Compile with real toolchain 0.31.1, deploy to local devnet, settle end-to-end with real proofs (receipt winningValue=1200)
+- [x] Deploy to Midnight preprod via 1AM wallet (sponsored fees) and verify on-chain state via indexer

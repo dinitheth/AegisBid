@@ -83,13 +83,18 @@ Compact is evolving. Pin a compiler release and reconcile syntax with that relea
 
 ## Deployment status (honest)
 
-The contract is **deployed on a local `undeployed` network** (Ubuntu VPS, toolchain 0.31.1) and exercised end-to-end with real ZK proofs: `submitBid` → `beginEvaluation` → `settle`, receipt `winningValue=1200`, phase `Settled`. Not on preprod / mainnet. This repo contains no generated bindings (`managed/` is build output) — compile to reproduce.
+The contract is **deployed on Midnight preprod** (toolchain 0.31.1, via the
+1AM wallet with sponsored fees) and **verified on-chain**: phase `Open`,
+reserve `1000`, highest-bid mode, deadline Sep 27 2026. It was previously
+proven end-to-end on a local devnet (`submitBid` → `beginEvaluation` →
+`settle`, receipt `winningValue=1200`, phase `Settled`). Not on mainnet.
 
-- Live deployment (local devnet): `75e339942b5d9f07bd9713b13b12cdf9f10ebf68e487fd894fc8e7a21bdbe390`
-- Settlement receipt: winner `9dc624c6…0d78ba2`, value `1200`, root `267a008f…2ef17eb`, time `1789583043`
-- Transactions: deploy `75e33994…` (contract creation), bid `0048722c…` (block 825), evaluate `002687c0…`, settle `009e088c…`
+- Preprod deployment: `daf54fc95751b84c53da2f402aea96e5f23d19185783453ba067c123d89d0fc4`
+- Deploy tx: `a7d150207c83adc5d993f5267a4abfaa8115fc81b71091712fa3fa029c4a2fa7` (block #2,634,493, fee 1 speck)
+- Explorer: `https://explorer.1am.xyz/tx/a7d150207c83adc5d993f5267a4abfaa8115fc81b71091712fa3fa029c4a2fa7?network=preprod`
+- Local devnet deployment: `75e339942b5d9f07bd9713b13b12cdf9f10ebf68e487fd894fc8e7a21bdbe390` (settled, receipt `winningValue=1200`)
 - Check status: `bun run midnight:status`
-- Real-chain path: [`docs/MIDNIGHT_INTEGRATION.md`](docs/MIDNIGHT_INTEGRATION.md) (endpoints in [`src/features/aegis/midnight/networks.ts`](src/features/aegis/midnight/networks.ts), ledger mapping + witnesses in [`src/features/aegis/midnight/contract.ts`](src/features/aegis/midnight/contract.ts), deploy via `bun run deploy:local`, e2e via `node --import tsx/esm scripts/midnight-deploy.mjs --network undeployed --e2e`)
+- Real-chain path: [`docs/MIDNIGHT_INTEGRATION.md`](docs/MIDNIGHT_INTEGRATION.md) (endpoints in [`src/features/aegis/midnight/networks.ts`](src/features/aegis/midnight/networks.ts), ledger mapping + witnesses in [`src/features/aegis/midnight/contract.ts`](src/features/aegis/midnight/contract.ts), browser deploy in [`src/features/aegis/midnight/DeployPage.tsx`](src/features/aegis/midnight/DeployPage.tsx))
 - Configure a deployment: copy [`.env.example`](.env.example), set `VITE_MIDNIGHT_NETWORK_ID` and `VITE_AEGISBID_CONTRACT`.
 
 ## Privacy guarantees and limits

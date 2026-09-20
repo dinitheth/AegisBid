@@ -54,8 +54,8 @@ bun run dev           # Settlement → Load 3 demo offers → Start evaluation �
 ## 5. Wave 2 plan
 
 TypeScript bindings are generated (toolchain 0.31.1) and the contract is
-**deployed on a local devnet and settled end-to-end with real proofs**
-(`75e33994…`, receipt `winningValue=1200`, phase `Settled` — see
-`docs/MIDNIGHT_INTEGRATION.md`). Next: connect the browser proof flow to the
-deployment, promote to preprod with faucet tNIGHT + `MIDNIGHT_SEED`, then
-pilot with a real issuer.
+**deployed on Midnight preprod**
+(`daf54fc9…d0fc4`, deploy tx `a7d15020…`, block #2,634,493 — see
+`docs/MIDNIGHT_INTEGRATION.md`), plus proven end-to-end on a local devnet
+(settle receipt `winningValue=1200`). Next: live bid/settle calls against
+the preprod deployment from the app, then pilot with a real issuer.
