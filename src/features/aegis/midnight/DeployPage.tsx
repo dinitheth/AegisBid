@@ -10,6 +10,7 @@
  * ZK artifacts come from `VITE_ZK_CONFIG_BASE` (default: jsDelivr for the
  * committed `managed/aegis-bid` outputs).
  */
+import "./polyfills";
 import { useEffect, useState } from "react";
 import { setNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
 import { FetchZkConfigProvider } from "@midnight-ntwrk/midnight-js-fetch-zk-config-provider";
