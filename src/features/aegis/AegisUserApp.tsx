@@ -21,9 +21,16 @@ import { beginEvaluation, makeCommitment, settle, TenderError, type BidWitness, 
 import { buildTenderStateForSettlement, friendlySettlementError, parseReserveToBigInt, storedBidToWitness, uiTenderToConfig } from "./evaluator";
 import { useMidnightWallet } from "./wallet";
 import { getChainConfig, isConfigured } from "./chain";
+import { Suspense, lazy } from "react";
 import { useChainTenders, type ChainTenders } from "./useChainTenders";
-import { DeployPage } from "./midnight/DeployPage";
 import logo from "@/assets/aegisbid-logo.png";
+
+// WASM-backed Midnight modules must never evaluate during SSR (their loader
+// does a7327 readFileSync that only exists in the browser bundle). Lazy-load
+// the deploy page so the chain stays client-side.
+const DeployPage = lazy(() =>
+  import("./midnight/DeployPage").then((mod) => ({ default: mod.DeployPage })),
+);
 
 type Page = "home" | "tenders" | "bid" | "bids" | "compare" | "settle" | "deploy" | "balance" | "results" | "about";
 type SubmittedBid = StoredBid;
@@ -1026,7 +1033,17 @@ export function AegisUserApp() {
     {page === "bids" && <BidHistory bids={bids} onBrowse={() => navigate("tenders")} onClear={() => setBids([])} />}
     {page === "compare" && <ComparePage bids={bids} tenders={chain.tenders} />}
     {page === "settle" && <SettlementPage bids={bids} tenders={chain.tenders} />}
-    {page === "deploy" && <DeployPage />}
+    {page === "deploy" && (
+      <Suspense
+        fallback={
+          <div className="mx-auto max-w-5xl px-5 py-12 text-sm text-muted-foreground">
+            Loading live-deploy modules...
+          </div>
+        }
+      >
+        <DeployPage />
+      </Suspense>
+    )}
     {page === "balance" && <BalancePage wallet={wallet} />}
     {page === "results" && <Results />}
     {page === "about" && <HowItWorks />}
