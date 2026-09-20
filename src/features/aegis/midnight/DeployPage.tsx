@@ -59,6 +59,9 @@ const ZK_BASE =
   (import.meta.env["VITE_ZK_CONFIG_BASE"] as string | undefined) ||
   "https://cdn.jsdelivr.net/gh/dinitheth/AegisBid@main/managed/aegis-bid";
 
+// Bump on every deploy-flow change so screenshots identify the bundle.
+const BUILD_ID = "2026-09-20C-buffer-global+stack";
+
 const bytesToHex = (bytes: Uint8Array) =>
   Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 
@@ -253,10 +256,14 @@ export function DeployPage() {
       setStatus(null);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Deployment failed.";
+      const stack =
+        cause instanceof Error && cause.stack
+          ? cause.stack.split("\n").slice(0, 4).join("\n")
+          : "";
       const hint = /rate|429|limit/i.test(message)
         ? " Public infra is throttling — wait a minute and retry."
         : "";
-      setFailure(`Failed during ${step}: ${message}.${hint}`);
+      setFailure(`Failed during ${step}: ${message}.${hint}${stack ? `\n${stack}` : ""}`);
     } finally {
       setBusy(false);
     }
@@ -330,14 +337,17 @@ export function DeployPage() {
       </section>
 
       <section className="mt-6 rounded-lg border border-border bg-section p-6">
-        <h2 className="font-display text-xl font-semibold text-foreground">3 · Deploy</h2>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="font-display text-xl font-semibold text-foreground">3 · Deploy</h2>
+          <span className="font-mono text-[11px] text-muted-foreground">build {BUILD_ID}</span>
+        </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <Button size="lg" onClick={() => void deploy()} disabled={!api || busy || !deadline}>
             {busy ? (status ?? "Working...") : "Deploy to preprod"}
           </Button>
         </div>
         {status && !busy ? null : status && <p className="mt-3 text-sm text-muted-foreground">{status}</p>}
-        {failure && <p className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{failure}</p>}
+        {failure && <p className="mt-4 whitespace-pre-wrap break-all rounded-md border border-destructive/40 bg-destructive/10 p-3 font-mono text-xs text-destructive">{failure}</p>}
         {contractAddress && (
           <div className="mt-4 rounded-md border border-success/30 bg-card p-4">
             <p className="text-xs text-card-foreground/60">Contract address</p>
