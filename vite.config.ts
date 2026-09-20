@@ -28,5 +28,14 @@ export default defineConfig({
       ],
     },
     build: { target: "esnext" },
+    // ledger-v8 only exports "." under "browser"/"node" conditions, but the
+    // SSR build resolves with workerd conditions. Ledger code only ever runs
+    // in browser event handlers, so resolving the node variant server-side is
+    // safe (it is never executed during SSR).
+    ssr: {
+      resolve: {
+        conditions: ["workerd", "worker", "production", "wasm", "unwasm", "import", "node"],
+      },
+    },
   },
 });
