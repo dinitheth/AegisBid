@@ -37,7 +37,7 @@ const ZK_BASE =
   "https://cdn.jsdelivr.net/gh/dinitheth/AegisBid@main/managed/aegis-bid";
 
 // Bump on every deploy-flow change so screenshots identify the bundle.
-const BUILD_ID = "2026-09-20D-buffer-call";
+const BUILD_ID = "2026-09-21A-user-ia";
 
 const bytesToHex = (bytes: Uint8Array) =>
   Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
@@ -48,9 +48,38 @@ function defaultDeadlineInput() {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+type PublishedTender = {
+  address: string;
+  issuer: string;
+  mode: "highest" | "lowest";
+  reserve: string;
+  deadline: string;
+  deployedAt: number;
+};
+
+const PUBLISHED_KEY = "aegis-published-tenders";
+
+function loadPublished(): PublishedTender[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(PUBLISHED_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (entry): entry is PublishedTender =>
+        typeof entry === "object" &&
+        entry !== null &&
+        typeof (entry as Record<string, unknown>).address === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
 export function DeployPage() {
   const [wallet, setWallet] = useState<OneAmInitialApi | null>(null);
   const { api, info, setConnected } = useOneAmWallet();
+  const [published, setPublished] = useState<PublishedTender[]>(() => loadPublished());
   const [issuer, setIssuer] = useState("AegisBid Wave 1 demo issuer");
   const [deadline, setDeadline] = useState(defaultDeadlineInput);
   const [reserve, setReserve] = useState("1000");
@@ -219,7 +248,25 @@ export function DeployPage() {
           typeof deployContract
         >[1],
       );
-      setContractAddress(deployed.deployTxData.public.contractAddress);
+      const address: string = deployed.deployTxData.public.contractAddress;
+      setContractAddress(address);
+      setPublished((items) => {
+        const record: PublishedTender = {
+          address,
+          issuer,
+          mode,
+          reserve: reserve === "" ? "0" : reserve,
+          deadline: new Date(deadline).toISOString(),
+          deployedAt: Date.now(),
+        };
+        const next = [record, ...items.filter((item) => item.address !== address)].slice(0, 20);
+        try {
+          window.localStorage.setItem(PUBLISHED_KEY, JSON.stringify(next));
+        } catch {
+          /* private mode etc. */
+        }
+        return next;
+      });
       setStatus(null);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Deployment failed.";
@@ -239,10 +286,12 @@ export function DeployPage() {
   return (
     <div className="mx-auto max-w-5xl px-5 py-12 sm:py-16">
       <p className="text-sm font-semibold text-primary">Preprod · 1AM wallet</p>
-      <h1 className="mt-2 font-display text-4xl font-semibold text-foreground">Deploy live</h1>
+      <h1 className="mt-2 font-display text-4xl font-semibold text-foreground">Publish an opportunity</h1>
       <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">
-        Deploys <span className="font-mono text-xs">contracts/aegis_bid.compact</span> to Midnight
-        preprod through your 1AM wallet. Proving and fees are sponsored — you pay nothing.
+        Publish a shielded tender that bidders can find in the explorer. Your
+        policy (deadline, limit, selection rule) goes on-chain as a
+        verifiable contract — bid amounts stay private. Proving and fees are
+        sponsored, so publishing costs you nothing.
       </p>
 
       <section className="mt-8 rounded-lg border border-border bg-card p-6">
@@ -305,12 +354,12 @@ export function DeployPage() {
 
       <section className="mt-6 rounded-lg border border-border bg-section p-6">
         <div className="flex items-baseline justify-between gap-3">
-          <h2 className="font-display text-xl font-semibold text-foreground">3 · Deploy</h2>
+          <h2 className="font-display text-xl font-semibold text-foreground">3 · Publish</h2>
           <span className="font-mono text-[11px] text-muted-foreground">build {BUILD_ID}</span>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <Button size="lg" onClick={() => void deploy()} disabled={!api || busy || !deadline}>
-            {busy ? (status ?? "Working...") : "Deploy to preprod"}
+            {busy ? (status ?? "Working...") : "Publish opportunity"}
           </Button>
         </div>
         {status && !busy ? null : status && <p className="mt-3 text-sm text-muted-foreground">{status}</p>}
@@ -330,6 +379,32 @@ export function DeployPage() {
           </div>
         )}
       </section>
+
+      {published.length > 0 && (
+        <section className="mt-6 rounded-lg border border-border bg-card p-6">
+          <h2 className="font-display text-xl font-semibold text-card-foreground">Your published opportunities</h2>
+          <p className="mt-1 text-sm text-card-foreground/70">Tenders you published from this device. Bidders find them in the explorer; amounts stay sealed.</p>
+          <div className="mt-4 space-y-3">
+            {published.map((item) => (
+              <article key={item.address} className="rounded-md border border-border p-4 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-semibold text-card-foreground">{item.issuer}</p>
+                  <p className="font-display font-semibold text-primary">
+                    {Number(item.reserve).toLocaleString()} credits · {item.mode === "lowest" ? "lowest wins" : "highest wins"}
+                  </p>
+                </div>
+                <p className="mt-1 break-all font-mono text-xs text-card-foreground/60">{item.address}</p>
+                <div className="mt-2 flex flex-wrap gap-3 text-xs text-card-foreground/60">
+                  <span>Published {new Date(item.deployedAt).toLocaleString()}</span>
+                  <a className="underline" href={`https://explorer.1am.xyz/address/${item.address}?network=preprod`} target="_blank" rel="noreferrer">
+                    View on explorer
+                  </a>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

@@ -100,7 +100,7 @@ export function useMidnightWallet() {
   const connect = useCallback(async () => {
     const provider = connector();
     if (!provider) {
-      setError("No Midnight wallet found. Install the Lace Midnight wallet extension to continue.");
+      setError("No Lace wallet found. Connect 1AM on the Live deploy page, or install the Lace Midnight wallet extension.");
       return;
     }
     setConnecting(true);

@@ -273,7 +273,7 @@ function Tenders({ onOpen, chain }: { onOpen: (tender: Tender) => void; chain: C
   </div>;
 }
 
-function BidPage({ tender, onBack, onSubmit, wallet }: { tender: Tender; onBack: () => void; onSubmit: (bid: SubmittedBid) => void; wallet: WalletState }) {
+function BidPage({ tender, onBack, onSubmit, onGoDeploy, wallet }: { tender: Tender; onBack: () => void; onSubmit: (bid: SubmittedBid) => void; onGoDeploy: () => void; wallet: WalletState }) {
   const [amount, setAmount] = useState("");
   const [agreed, setAgreed] = useState(false);
   const [sending, setSending] = useState(false);
@@ -343,9 +343,11 @@ function BidPage({ tender, onBack, onSubmit, wallet }: { tender: Tender; onBack:
             ? <p className="font-mono text-xs text-card-foreground/60">1AM · {shortAddress(oneAm.info.unshieldedAddress)}</p>
             : wallet.connected && wallet.wallet
               ? <p className="font-mono text-xs text-card-foreground/60">{shortAddress(wallet.wallet.address)}</p>
-              : <Button size="sm" variant="outline" onClick={() => void wallet.connect()} disabled={wallet.connecting}>{wallet.connecting ? "Connecting..." : "Connect wallet"}</Button>}
+              : wallet.available
+                ? <Button size="sm" variant="outline" onClick={() => void wallet.connect()} disabled={wallet.connecting}>{wallet.connecting ? "Connecting..." : "Connect Lace"}</Button>
+                : <Button size="sm" variant="outline" onClick={onGoDeploy}>Connect 1AM</Button>}
         </div>
-        <p className="mt-2 text-sm text-card-foreground/70">{oneAm.info ? `Connected with 1AM on ${oneAm.info.networkId}. Your sealed offer binds to this address.` : wallet.connected ? `Available balance ${wallet.balance} tDUST · estimated network fee ${fee} tDUST` : wallet.available ? "Connect your Midnight wallet to send this offer to the network." : "No Midnight wallet detected in this browser. You can still prepare your offer."}</p>
+        <p className="mt-2 text-sm text-card-foreground/70">{oneAm.info ? `Connected with 1AM on ${oneAm.info.networkId}. Your sealed offer binds to this address.` : wallet.connected ? `Available balance ${wallet.balance} tDUST · estimated network fee ${fee} tDUST` : "Connect 1AM to bind this offer to your wallet, or continue without a wallet."}</p>
         {wallet.error && <p className="mt-2 text-sm text-destructive">{wallet.error}</p>}
         {!enough && <p className="mt-2 text-sm text-destructive">Your balance is too low to cover the network fee.</p>}
       </div>
@@ -412,7 +414,7 @@ function BidHistory({ bids, onBrowse, onClear }: { bids: SubmittedBid[]; onBrows
   );
 }
 
-function BalancePage({ wallet }: { wallet: WalletState }) {
+function BalancePage({ wallet, onGoDeploy }: { wallet: WalletState; onGoDeploy: () => void }) {
   const oneAm = useOneAmWallet();
   const others = Object.entries(wallet.wallet?.balances ?? {}).filter(([token]) => token !== "tDUST");
   return (
@@ -460,8 +462,15 @@ function BalancePage({ wallet }: { wallet: WalletState }) {
           <div className="text-center">
             <Wallet className="mx-auto size-8 text-primary" />
             <h2 className="mt-4 font-display text-xl font-semibold text-card-foreground">Wallet not connected</h2>
-            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-card-foreground/70">{wallet.available ? "Connect your Lace Midnight wallet to see your live balance here." : "No Midnight wallet was found in this browser. Install the Lace Midnight extension, then reload this page."}</p>
-            <Button className="mt-5" onClick={() => void wallet.connect()} disabled={wallet.connecting}>{wallet.connecting ? "Connecting..." : "Connect wallet"}</Button>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-card-foreground/70">Connect your 1AM wallet to see live balances. Lace works too, where installed.</p>
+            <div className="mt-5 flex flex-wrap justify-center gap-2">
+              <Button onClick={onGoDeploy}>Connect 1AM</Button>
+              {wallet.available && (
+                <Button variant="outline" onClick={() => void wallet.connect()} disabled={wallet.connecting}>
+                  {wallet.connecting ? "Connecting..." : "Connect Lace"}
+                </Button>
+              )}
+            </div>
           </div>
         )}
         {wallet.error && <p className="mt-4 text-sm text-destructive">{wallet.error}</p>}
@@ -1066,7 +1075,7 @@ export function AegisUserApp() {
     {activeLabel && page !== "home" && page !== "bid" && <div className="border-b border-border bg-section"><div className="mx-auto max-w-6xl px-5 py-2 text-xs text-muted-foreground">AegisBid / {activeLabel}</div></div>}
     {page === "home" && <Home onBrowse={() => navigate("tenders")} onLearn={() => navigate("about")} onOpen={openTender} />}
     {page === "tenders" && <Tenders onOpen={openTender} chain={chain} />}
-    {page === "bid" && <BidPage wallet={wallet} tender={selected} onBack={() => navigate("tenders")} onSubmit={(bid) => { setBids((items) => [bid, ...items]); navigate("bids"); }} />}
+    {page === "bid" && <BidPage wallet={wallet} tender={selected} onBack={() => navigate("tenders")} onGoDeploy={() => navigate("deploy")} onSubmit={(bid) => { setBids((items) => [bid, ...items]); navigate("bids"); }} />}
     {page === "bids" && <BidHistory bids={bids} onBrowse={() => navigate("tenders")} onClear={() => setBids([])} />}
     {page === "compare" && <ComparePage bids={bids} tenders={chain.tenders} />}
     {page === "settle" && <SettlementPage bids={bids} tenders={chain.tenders} />}
@@ -1081,7 +1090,7 @@ export function AegisUserApp() {
         <DeployPage />
       </Suspense>
     )}
-    {page === "balance" && <BalancePage wallet={wallet} />}
+    {page === "balance" && <BalancePage wallet={wallet} onGoDeploy={() => navigate("deploy")} />}
     {page === "results" && <Results />}
     {page === "about" && <HowItWorks />}
     <SiteFooter onNavigate={navigate} chain={chain} />
