@@ -279,6 +279,7 @@ function BidPage({ tender, onBack, onSubmit, wallet }: { tender: Tender; onBack:
   const [sending, setSending] = useState(false);
   const [stage, setStage] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const oneAm = useOneAmWallet();
   const balance = Number(wallet.balanceRaw) / 1_000_000;
   const fee = 0.35;
   const enough = !wallet.connected || balance >= fee;
@@ -290,7 +291,7 @@ function BidPage({ tender, onBack, onSubmit, wallet }: { tender: Tender; onBack:
     // Binding commitment via the protocol engine (SHA-256 over amount:salt:key),
     // matching the `submitBid` commitment model in contracts/aegis_bid.compact.
     const salt = generateNonce();
-    const bidderKey = wallet.wallet?.address ?? wallet.wallet?.coinPublicKey ?? `local-device:${submittedAt}`;
+    const bidderKey = oneAm.info?.unshieldedAddress ?? wallet.wallet?.address ?? wallet.wallet?.coinPublicKey ?? `local-device:${submittedAt}`;
     const commitment = makeCommitment(BigInt(amount), salt, bidderKey);
     const base = {
       tenderId: tender.id,
@@ -338,11 +339,13 @@ function BidPage({ tender, onBack, onSubmit, wallet }: { tender: Tender; onBack:
       <div className="mt-6 rounded-md border border-border bg-muted/40 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="flex items-center gap-2 text-sm font-semibold text-card-foreground"><Wallet className="size-4 text-primary" />Your wallet</p>
-          {wallet.connected && wallet.wallet
-            ? <p className="font-mono text-xs text-card-foreground/60">{shortAddress(wallet.wallet.address)}</p>
-            : <Button size="sm" variant="outline" onClick={() => void wallet.connect()} disabled={wallet.connecting}>{wallet.connecting ? "Connecting..." : "Connect wallet"}</Button>}
+          {oneAm.info
+            ? <p className="font-mono text-xs text-card-foreground/60">1AM · {shortAddress(oneAm.info.unshieldedAddress)}</p>
+            : wallet.connected && wallet.wallet
+              ? <p className="font-mono text-xs text-card-foreground/60">{shortAddress(wallet.wallet.address)}</p>
+              : <Button size="sm" variant="outline" onClick={() => void wallet.connect()} disabled={wallet.connecting}>{wallet.connecting ? "Connecting..." : "Connect wallet"}</Button>}
         </div>
-        <p className="mt-2 text-sm text-card-foreground/70">{wallet.connected ? `Available balance ${wallet.balance} tDUST · estimated network fee ${fee} tDUST` : wallet.available ? "Connect your Midnight wallet to send this offer to the network." : "No Midnight wallet detected in this browser. You can still prepare your offer."}</p>
+        <p className="mt-2 text-sm text-card-foreground/70">{oneAm.info ? `Connected with 1AM on ${oneAm.info.networkId}. Your sealed offer binds to this address.` : wallet.connected ? `Available balance ${wallet.balance} tDUST · estimated network fee ${fee} tDUST` : wallet.available ? "Connect your Midnight wallet to send this offer to the network." : "No Midnight wallet detected in this browser. You can still prepare your offer."}</p>
         {wallet.error && <p className="mt-2 text-sm text-destructive">{wallet.error}</p>}
         {!enough && <p className="mt-2 text-sm text-destructive">Your balance is too low to cover the network fee.</p>}
       </div>
@@ -410,14 +413,32 @@ function BidHistory({ bids, onBrowse, onClear }: { bids: SubmittedBid[]; onBrows
 }
 
 function BalancePage({ wallet }: { wallet: WalletState }) {
+  const oneAm = useOneAmWallet();
   const others = Object.entries(wallet.wallet?.balances ?? {}).filter(([token]) => token !== "tDUST");
   return (
     <div className="mx-auto max-w-3xl px-5 py-12 sm:py-16">
       <p className="text-sm font-semibold text-primary">Your wallet</p>
       <h1 className="mt-2 font-display text-4xl font-semibold text-foreground">Wallet balance</h1>
-      <p className="mt-3 leading-7 text-muted-foreground">Connected to the Lace Midnight wallet in this browser. Your balance is read directly from the wallet.</p>
+      <p className="mt-3 leading-7 text-muted-foreground">
+        {oneAm.info
+          ? "Connected to your 1AM wallet. Balances are read directly from the wallet."
+          : "Connected to the Lace Midnight wallet in this browser. Your balance is read directly from the wallet."}
+      </p>
       <section className="mt-8 rounded-lg border border-border bg-card p-6 sm:p-8">
-        {wallet.connected && wallet.wallet ? (
+        {oneAm.info ? (
+          <>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-xs text-card-foreground/60">DUST balance (1AM · {oneAm.info.networkId})</p>
+                <p className="mt-1 font-display text-4xl font-semibold text-card-foreground">{oneAm.info.dustBalance}</p>
+              </div>
+              <Button variant="ghost" onClick={oneAm.disconnect}>Disconnect 1AM</Button>
+            </div>
+            <dl className="mt-6 space-y-4 border-t border-border pt-5 text-sm">
+              <div><dt className="text-card-foreground/60">Wallet address</dt><dd className="mt-1 break-all font-mono text-xs text-card-foreground">{oneAm.info.unshieldedAddress}</dd></div>
+            </dl>
+          </>
+        ) : wallet.connected && wallet.wallet ? (
           <>
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0">
