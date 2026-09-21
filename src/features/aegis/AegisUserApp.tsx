@@ -182,7 +182,7 @@ const rightNavItems = navItems.slice(4);
 function Brand({ onClick, light }: { onClick: () => void; light?: boolean }) {
   return (
     <Button variant="ghost" className="h-11 shrink-0 gap-2.5 rounded-xl px-1.5 pr-3 hover:bg-white/10" onClick={onClick} aria-label="AegisBid home">
-      <img src={logo} alt="" width={1024} height={1024} className="size-9 rounded-lg" />
+      <img src={logo} alt="" width={1024} height={1024} className={light ? "size-9 rounded-full bg-white p-1" : "size-9 rounded-lg"} />
       <span className={`font-display text-xl font-semibold ${light ? "text-white" : "text-foreground"}`}>AegisBid</span>
     </Button>
   );
@@ -989,7 +989,7 @@ function SiteFooter({ onNavigate, chain }: { onNavigate: (page: Page) => void; c
         <div className="grid gap-10 lg:grid-cols-[1.4fr_1fr_1fr_1.2fr]">
           <div>
             <div className="flex items-center gap-2.5">
-      <img src={logo} alt="" width={1024} height={1024} className={light ? "size-9 rounded-full bg-white p-1" : "size-9 rounded-lg"} />
+      <img src={logo} alt="" width={1024} height={1024} className="size-9 rounded-lg" />
               <span className="font-display text-xl font-semibold text-foreground">AegisBid</span>
             </div>
             <p className="mt-4 max-w-xs text-sm leading-6 text-muted-foreground">
