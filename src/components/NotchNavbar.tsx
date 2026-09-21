@@ -2,12 +2,12 @@
  * Notch navbar — Vengeance UI Notch Navbar
  * (https://www.vengenceui.com/components/notch-navbar) adapted to AegisBid.
  *
- * Adaptation notes: no Next.js / framer-motion / next-themes here, and the
- * app page is light, so the signature full-bleed cutout (which reveals light
- * page wedges beside the notch) is reworked as a floating ocean-navy pill:
- * same centered brand, icon links, active pills, and mobile overlay, minus
- * the white-corner artifacts. Lucide icons per entry, xl breakpoint matching
- * the app shell.
+ * Signature geometry kept: full-width fixed bar, shallow side rails (h-10)
+ * framing a deeper center notch (h-16) joined by curved concave cutouts
+ * (SVG clip-path corners). Adaptations: no Next.js / framer-motion /
+ * next-themes; ocean-navy palette; Lucide icons per entry; xl breakpoint.
+ * The wedge zones beside the notch carry a navy gradient wash (instead of
+ * raw page background) so the cutout reads as deliberate glow, not a gap.
  */
 import { useState } from "react";
 import { Menu, X, type LucideIcon } from "lucide-react";
@@ -45,6 +45,15 @@ function NotchLink({
   );
 }
 
+function RailHairlines() {
+  return (
+    <svg className="pointer-events-none absolute inset-0 h-full w-full" preserveAspectRatio="none" aria-hidden="true">
+      <line x1="0" y1="39.5" x2="100%" y2="39.5" stroke="white" strokeOpacity={0.14} strokeWidth={0.5} />
+      <line x1="0" y1="36.5" x2="100%" y2="36.5" stroke="white" strokeOpacity={0.14} strokeWidth={0.5} />
+    </svg>
+  );
+}
+
 export function NotchNavbar({
   left,
   right,
@@ -70,28 +79,70 @@ export function NotchNavbar({
 
   return (
     <>
-      <header className={cn("fixed inset-x-0 top-0 z-40 px-3 pt-3 sm:px-5", className)}>
-        <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-3 rounded-2xl bg-notch px-3 shadow-[0_14px_36px_rgba(8,25,48,0.35)] sm:px-5">
-          <nav className="hidden min-w-0 flex-1 items-center gap-5 xl:flex" aria-label="Main navigation">
-            {left.map((entry) => (
-              <NotchLink key={entry.id} entry={entry} active={entry.id === activeId} onClick={() => go(entry.id)} />
-            ))}
-          </nav>
-          <button
-            type="button"
-            className="p-1 text-white/70 transition-colors hover:text-white xl:hidden"
-            onClick={() => setOpen((value) => !value)}
-            aria-label={open ? "Close navigation" : "Open navigation"}
-          >
-            {open ? <X className="size-5" /> : <Menu className="size-5" />}
-          </button>
-          <div className="flex shrink-0 justify-center">{brand}</div>
-          <nav className="hidden min-w-0 flex-1 items-center justify-end gap-5 xl:flex" aria-label="Secondary navigation">
-            {right.map((entry) => (
-              <NotchLink key={entry.id} entry={entry} active={entry.id === activeId} onClick={() => go(entry.id)} />
-            ))}
-          </nav>
-          <div className="flex shrink-0 items-center gap-1.5">{actions}</div>
+      <header className={cn("fixed inset-x-0 top-0 z-40 flex h-16 px-0", className)}>
+        {/* Left rail + ocean wash */}
+        <div className="relative z-20 h-10 min-w-0 flex-1 bg-notch">
+          <RailHairlines />
+          <div className="pointer-events-none absolute inset-x-0 top-full h-12 bg-gradient-to-b from-notch/45 to-transparent" aria-hidden="true" />
+        </div>
+
+        {/* Notch: 3 slices */}
+        <div className="relative z-10 -ml-[2px] flex h-16 shrink-0 shadow-[0_14px_36px_rgba(8,25,48,0.35)]">
+          {/* Left corner */}
+          <div className="relative h-full w-[50px] shrink-0">
+            <div className="absolute inset-0 bg-notch" style={{ clipPath: "path('M0 0 H50 V64 C25 64 25 40 0 40 Z')" }} />
+            <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 50 64" aria-hidden="true">
+              <path d="M0 39.5 C25 39.5 25 63.5 50 63.5" fill="none" stroke="white" strokeOpacity={0.14} strokeWidth={0.5} />
+              <path d="M0 36.5 C25 36.5 25 60.5 50 60.5" fill="none" stroke="white" strokeOpacity={0.14} strokeWidth={0.5} />
+            </svg>
+          </div>
+
+          {/* Center */}
+          <div className="relative -ml-[2px] min-w-0 flex-1">
+            <div className="absolute inset-0 bg-notch">
+              <svg className="pointer-events-none absolute inset-0 h-full w-full" preserveAspectRatio="none" aria-hidden="true">
+                <line x1="0" y1="63.5" x2="100%" y2="63.5" stroke="white" strokeOpacity={0.14} strokeWidth={0.5} />
+                <line x1="0" y1="60.5" x2="100%" y2="60.5" stroke="white" strokeOpacity={0.14} strokeWidth={0.5} />
+              </svg>
+            </div>
+            <div className="relative flex h-full w-full items-end justify-between gap-3 px-4 pb-2 md:px-6">
+              <nav className="mb-1 hidden shrink-0 items-center gap-5 xl:flex" aria-label="Main navigation">
+                {left.map((entry) => (
+                  <NotchLink key={entry.id} entry={entry} active={entry.id === activeId} onClick={() => go(entry.id)} />
+                ))}
+              </nav>
+              <button
+                type="button"
+                className="mb-1 p-1 text-white/70 transition-colors hover:text-white xl:hidden"
+                onClick={() => setOpen((value) => !value)}
+                aria-label={open ? "Close navigation" : "Open navigation"}
+              >
+                {open ? <X className="size-5" /> : <Menu className="size-5" />}
+              </button>
+              <div className="mx-1 mb-0.5 flex shrink-0 justify-center">{brand}</div>
+              <nav className="mb-1 hidden shrink-0 items-center gap-5 xl:flex" aria-label="Secondary navigation">
+                {right.map((entry) => (
+                  <NotchLink key={entry.id} entry={entry} active={entry.id === activeId} onClick={() => go(entry.id)} />
+                ))}
+              </nav>
+              <div className="mb-1 flex shrink-0 items-center gap-1.5">{actions}</div>
+            </div>
+          </div>
+
+          {/* Right corner */}
+          <div className="relative -ml-[2px] h-full w-[50px] shrink-0">
+            <div className="absolute inset-0 bg-notch" style={{ clipPath: "path('M0 0 H50 V40 C25 40 25 64 0 64 Z')" }} />
+            <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 50 64" aria-hidden="true">
+              <path d="M0 63.5 C25 63.5 25 39.5 50 39.5" fill="none" stroke="white" strokeOpacity={0.14} strokeWidth={0.5} />
+              <path d="M0 60.5 C25 60.5 25 36.5 50 36.5" fill="none" stroke="white" strokeOpacity={0.14} strokeWidth={0.5} />
+            </svg>
+          </div>
+        </div>
+
+        {/* Right rail + ocean wash */}
+        <div className="relative z-20 -ml-[2px] h-10 min-w-0 flex-1 bg-notch">
+          <RailHairlines />
+          <div className="pointer-events-none absolute inset-x-0 top-full h-12 bg-gradient-to-b from-notch/45 to-transparent" aria-hidden="true" />
         </div>
       </header>
 
