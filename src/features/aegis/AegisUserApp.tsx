@@ -226,7 +226,7 @@ function Home({ onBrowse, onLearn, onOpen }: { onBrowse: () => void; onLearn: ()
   return (
     <>
       <section className="relative min-h-[34rem] overflow-hidden border-b border-border bg-hero">
-        <img src={HOME_IMAGE_URL} alt="A bright architectural gateway above calm water" className="absolute inset-0 size-full object-cover object-[64%_center] sm:object-center" fetchPriority="high" />
+        <img src={HOME_IMAGE_URL} alt="A bright architectural gateway above calm water" className="absolute inset-0 size-full object-cover object-[70%_center]" fetchPriority="high" />
         <div className="absolute inset-0 bg-gradient-to-r from-hero via-hero/95 to-hero/10 sm:via-hero/80 sm:to-transparent" aria-hidden="true" />
         <div className="ocean-grid absolute inset-0 opacity-70" aria-hidden="true" />
         <div className="relative z-10 mx-auto flex min-h-[34rem] max-w-6xl items-center px-5 py-16 sm:py-24 lg:py-28">
@@ -989,7 +989,7 @@ function SiteFooter({ onNavigate, chain }: { onNavigate: (page: Page) => void; c
         <div className="grid gap-10 lg:grid-cols-[1.4fr_1fr_1fr_1.2fr]">
           <div>
             <div className="flex items-center gap-2.5">
-              <img src={logo} alt="" width={1024} height={1024} className="size-9 rounded-lg" />
+      <img src={logo} alt="" width={1024} height={1024} className={light ? "size-9 rounded-full bg-white p-1" : "size-9 rounded-lg"} />
               <span className="font-display text-xl font-semibold text-foreground">AegisBid</span>
             </div>
             <p className="mt-4 max-w-xs text-sm leading-6 text-muted-foreground">
