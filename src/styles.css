@@ -70,6 +70,8 @@
   --color-section: var(--section);
   --color-ocean: var(--ocean);
   --color-ocean-soft: var(--ocean-soft);
+  --color-notch: var(--notch);
+  --color-notch-foreground: var(--notch-foreground);
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Sora", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
@@ -109,6 +111,8 @@
   --section: oklch(0.962 0.016 240);
   --ocean: oklch(0.31 0.105 243);
   --ocean-soft: oklch(0.945 0.03 235);
+  --notch: oklch(0.235 0.075 258);
+  --notch-foreground: oklch(0.97 0.008 255);
   --chart-1: oklch(0.42 0.17 263);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -157,6 +161,8 @@
   --section: oklch(0.225 0.058 262);
   --ocean: oklch(0.70 0.11 238);
   --ocean-soft: oklch(0.25 0.055 245);
+  --notch: oklch(0.20 0.06 262);
+  --notch-foreground: oklch(0.97 0.008 255);
   --chart-1: oklch(0.68 0.15 258);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -229,25 +235,6 @@
   border-radius: var(--radius-md);
   color: var(--color-primary);
   background: color-mix(in oklab, var(--color-primary) 8%, transparent);
-}
-
-@utility notch-navbar {
-  position: relative;
-  border: 1px solid color-mix(in oklab, var(--color-primary) 10%, var(--color-border));
-  border-radius: 1rem;
-  background: var(--color-background);
-  box-shadow: 0 10px 30px color-mix(in oklab, var(--color-ocean) 8%, transparent);
-  backdrop-filter: blur(18px);
-}
-
-@utility notch-nav-item {
-  position: relative;
-  color: var(--color-muted-foreground);
-  &:hover { color: var(--color-foreground); }
-  &.is-active {
-    background: var(--color-ocean-soft);
-    color: var(--color-primary);
-  }
 }
 
 @utility ocean-grid {
