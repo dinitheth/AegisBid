@@ -237,6 +237,25 @@
   background: color-mix(in oklab, var(--color-primary) 8%, transparent);
 }
 
+@utility notch-navbar {
+  position: relative;
+  border: 1px solid color-mix(in oklab, var(--color-primary) 10%, var(--color-border));
+  border-radius: 1rem;
+  background: var(--color-background);
+  box-shadow: 0 10px 30px color-mix(in oklab, var(--color-ocean) 8%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+@utility notch-nav-item {
+  position: relative;
+  color: var(--color-muted-foreground);
+  &:hover { color: var(--color-foreground); }
+  &.is-active {
+    background: var(--color-ocean-soft);
+    color: var(--color-primary);
+  }
+}
+
 @utility ocean-grid {
   background-image:
     linear-gradient(color-mix(in oklab, var(--color-primary) 4%, transparent) 1px, transparent 1px),

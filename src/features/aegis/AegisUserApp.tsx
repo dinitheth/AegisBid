@@ -1,24 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
-  ArrowLeftRight,
   ArrowRight,
-  Award,
   Check,
   ChevronDown,
   FileCheck2,
-  History,
-  Info,
-  LayoutGrid,
   LockKeyhole,
+  Menu,
   RefreshCw,
-  Rocket,
   Search,
   ShieldCheck,
   Wallet,
   X,
 } from "lucide-react";
-import { NotchNavbar, type NotchNavEntry } from "@/components/NotchNavbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -165,25 +159,22 @@ function ChainPanel({ chain }: { chain: ChainTenders }) {
   );
 }
 
-const navItems: (NotchNavEntry & { id: Page })[] = [
-  { id: "tenders", label: "Open tenders", icon: LayoutGrid },
-  { id: "bids", label: "Bid history", icon: History },
-  { id: "compare", label: "Compare bids", icon: ArrowLeftRight },
-  { id: "settle", label: "Settlement", icon: ShieldCheck },
-  { id: "deploy", label: "Live deploy", icon: Rocket },
-  { id: "balance", label: "Wallet balance", icon: Wallet },
-  { id: "results", label: "Results", icon: Award },
-  { id: "about", label: "How it works", icon: Info },
+const navItems: { id: Page; label: string }[] = [
+  { id: "tenders", label: "Open tenders" },
+  { id: "bids", label: "Bid history" },
+  { id: "compare", label: "Compare bids" },
+  { id: "settle", label: "Settlement" },
+  { id: "deploy", label: "Live deploy" },
+  { id: "balance", label: "Wallet balance" },
+  { id: "results", label: "Results" },
+  { id: "about", label: "How it works" },
 ];
 
-const leftNavItems = navItems.slice(0, 4);
-const rightNavItems = navItems.slice(4);
-
-function Brand({ onClick, light }: { onClick: () => void; light?: boolean }) {
+function Brand({ onClick }: { onClick: () => void }) {
   return (
-    <Button variant="ghost" className="h-11 shrink-0 gap-2.5 rounded-xl px-1.5 pr-3 hover:bg-white/10" onClick={onClick} aria-label="AegisBid home">
-      <img src={logo} alt="" width={1024} height={1024} className={light ? "size-9 rounded-full bg-white p-1" : "size-9 rounded-lg"} />
-      <span className={`font-display text-xl font-semibold ${light ? "text-white" : "text-foreground"}`}>AegisBid</span>
+    <Button variant="ghost" className="h-11 shrink-0 gap-2.5 rounded-xl px-1.5 pr-3" onClick={onClick} aria-label="AegisBid home">
+      <img src={logo} alt="" width={1024} height={1024} className="size-9 rounded-lg" />
+      <span className="font-display text-xl font-semibold text-foreground">AegisBid</span>
     </Button>
   );
 }
@@ -1044,6 +1035,7 @@ export function AegisUserApp() {
   const [page, setPage] = useState<Page>("home");
   const [selected, setSelected] = useState<Tender>(defaultTender);
   const [bids, setBids] = useState<SubmittedBid[]>([]);
+  const [menuOpen, setMenuOpen] = useState(false);
   const wallet = useMidnightWallet();
   const chain = useChainTenders();
   const [hydratedBids, setHydratedBids] = useState(false);
@@ -1056,19 +1048,30 @@ export function AegisUserApp() {
   useEffect(() => {
     if (hydratedBids) window.localStorage.setItem(BID_STORAGE_KEY, JSON.stringify(bids));
   }, [bids, hydratedBids]);
-  const navigate = (next: Page) => { setPage(next); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const navigate = (next: Page) => { setPage(next); setMenuOpen(false); window.scrollTo({ top: 0, behavior: "smooth" }); };
   const openTender = (tender: Tender) => { setSelected(tender); navigate(tender.status === "Active" ? "bid" : "results"); };
   const activeLabel = useMemo(() => navItems.find((item) => item.id === page)?.label, [page]);
   return <OneAmWalletProvider><main className="min-h-screen bg-background text-foreground">
-    <NotchNavbar
-      left={leftNavItems}
-      right={rightNavItems}
-      activeId={page}
-      onNavigate={(id) => navigate(id as Page)}
-      brand={<Brand onClick={() => navigate("home")} light />}
-      actions={<WalletButton wallet={wallet} onMissing={() => navigate("deploy")} />}
-    />
-    <div className="h-16" aria-hidden="true" />
+    <header className="fixed inset-x-0 top-0 z-40 px-3 pt-3 sm:px-5 sm:pt-4">
+      <div className="notch-navbar mx-auto max-w-7xl">
+        <div className="flex h-16 items-center justify-between gap-3 px-3 sm:px-5">
+          <Brand onClick={() => navigate("home")} />
+          <nav className="hidden h-full items-center gap-1 xl:flex" aria-label="Main navigation">
+            {navItems.map((item) => (
+              <Button key={item.id} className={`notch-nav-item h-10 rounded-lg px-3 ${page === item.id ? "is-active" : ""}`} variant="ghost" onClick={() => navigate(item.id)} aria-current={page === item.id ? "page" : undefined}>
+                {item.label}
+              </Button>
+            ))}
+          </nav>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <WalletButton wallet={wallet} onMissing={() => navigate("deploy")} />
+            <Button variant="ghost" size="icon" className="xl:hidden" onClick={() => setMenuOpen((value) => !value)} aria-label={menuOpen ? "Close navigation" : "Open navigation"}>{menuOpen ? <X /> : <Menu />}</Button>
+          </div>
+        </div>
+        {menuOpen && <nav className="grid gap-1 border-t border-border p-3 xl:hidden" aria-label="Mobile navigation">{navItems.map((item) => <Button key={item.id} className="w-full justify-start rounded-lg" variant={page === item.id ? "secondary" : "ghost"} onClick={() => navigate(item.id)}>{item.label}</Button>)}</nav>}
+      </div>
+    </header>
+    <div className="h-20" aria-hidden="true" />
     {activeLabel && page !== "home" && page !== "bid" && <div className="border-b border-border bg-section"><div className="mx-auto max-w-6xl px-5 py-2 text-xs text-muted-foreground">AegisBid / {activeLabel}</div></div>}
     {page === "home" && <Home onBrowse={() => navigate("tenders")} onLearn={() => navigate("about")} onOpen={openTender} />}
     {page === "tenders" && <Tenders onOpen={openTender} chain={chain} />}
