@@ -14,7 +14,13 @@ describe("stored bids", () => {
       },
     ]);
     expect(bids).toHaveLength(1);
-    expect(bids[0]).toMatchObject({ salt: "", bidderKey: "", receipt: "0xabc", accepted: false });
+    expect(bids[0]).toMatchObject({
+      salt: "",
+      bidderKey: "",
+      identitySecret: "",
+      receipt: "0xabc",
+      accepted: false,
+    });
   });
 
   it("drops malformed entries and non-arrays", () => {

@@ -24,6 +24,8 @@ import { getChainConfig, isConfigured } from "./chain";
 import { Suspense, lazy } from "react";
 import { useChainTenders, type ChainTenders } from "./useChainTenders";
 import { OneAmWalletProvider, useOneAmWallet } from "./midnight/oneAmWallet";
+import { stringToBytes32 } from "./midnight/contract";
+import { ensureBrowserBuffer } from "./midnight/polyfills";
 import logo from "@/assets/aegisbid-logo.png";
 
 // WASM-backed Midnight modules must never evaluate during SSR (their loader
@@ -293,6 +295,9 @@ function BidPage({ tender, onBack, onSubmit, onGoDeploy, wallet }: { tender: Ten
     const salt = generateNonce();
     const bidderKey = oneAm.info?.unshieldedAddress ?? wallet.wallet?.address ?? wallet.wallet?.coinPublicKey ?? `local-device:${submittedAt}`;
     const commitment = makeCommitment(BigInt(amount), salt, bidderKey);
+    // Identity witness for live settlement proofs. Legacy rows lack it and
+    // stay local-only; every new bid records one.
+    const identitySecret = generateNonce();
     const base = {
       tenderId: tender.id,
       tenderTitle: tender.title,
@@ -301,8 +306,47 @@ function BidPage({ tender, onBack, onSubmit, onGoDeploy, wallet }: { tender: Ten
       commitment,
       salt,
       bidderKey,
+      identitySecret,
       submittedAt,
     };
+    const liveApi = oneAm.api;
+    const liveContract = tender.contractAddress;
+    if (liveApi && liveContract) {
+      try {
+        setStage("Submitting sealed bid on preprod (approve in 1AM)");
+        ensureBrowserBuffer();
+        // Dynamic import: the provider stack pulls WASM-backed modules that
+        // must never evaluate during SSR.
+        const { submitLiveBid } = await import("./midnight/providers");
+        const txHash = await submitLiveBid({
+          api: liveApi,
+          contractAddress: liveContract,
+          witnesses: {
+            amount: BigInt(amount),
+            salt: stringToBytes32(salt),
+            identitySecret: stringToBytes32(identitySecret),
+            bidderKey: stringToBytes32(bidderKey),
+          },
+          bidderKey: stringToBytes32(bidderKey),
+          nowSec: BigInt(Math.floor(submittedAt / 1000)),
+        });
+        onSubmit({
+          ...base,
+          receipt: txHash,
+          onChain: true,
+          accepted: true,
+          note: `Submitted on preprod · tx ${txHash.slice(0, 12)}…`,
+        });
+      } catch (cause) {
+        const reason = cause instanceof Error ? cause.message : "The transaction was not completed.";
+        setFailure(reason);
+        onSubmit({ ...base, receipt: commitment, onChain: false, accepted: false, note: reason });
+      } finally {
+        setStage(null);
+        setSending(false);
+      }
+      return;
+    }
     try {
       setStage("Sealing your offer on this device");
       await new Promise((resolve) => window.setTimeout(resolve, 500));
@@ -335,7 +379,7 @@ function BidPage({ tender, onBack, onSubmit, onGoDeploy, wallet }: { tender: Ten
     }
   };
   return <div className="mx-auto max-w-5xl px-5 py-10 sm:py-14"><Button variant="ghost" onClick={onBack}><ArrowLeft />Back to tenders</Button><div className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
-    <section className="rounded-lg border border-border bg-card p-6 sm:p-8"><StatusPill status={tender.status} /><h1 className="mt-4 font-display text-3xl font-semibold text-card-foreground">Submit your offer</h1><p className="mt-2 text-card-foreground/70">For {tender.title}</p>
+    <section className="rounded-lg border border-border bg-card p-6 sm:p-8"><StatusPill status={tender.status} /><h1 className="mt-4 font-display text-3xl font-semibold text-card-foreground">Submit your offer</h1><p className="mt-2 text-card-foreground/70">For {tender.title}</p><p className="mt-1 text-xs font-semibold text-primary">{tender.contractAddress ? "Live preprod tender — bids settle on-chain" : "Demo tender — bids record locally on this device"}</p>
       <div className="mt-6 rounded-md border border-border bg-muted/40 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="flex items-center gap-2 text-sm font-semibold text-card-foreground"><Wallet className="size-4 text-primary" />Your wallet</p>

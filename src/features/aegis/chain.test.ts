@@ -34,5 +34,6 @@ describe("chain flagship", () => {
     expect(tender?.mode).toBe("Highest bid");
     expect(tender?.commitments).toBe(2);
     expect(tender?.status).toBe("Active");
+    expect(tender?.contractAddress).toBe(FLAGSHIP_TENDER.contractAddress);
   });
 });

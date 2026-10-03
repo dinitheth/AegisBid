@@ -52,6 +52,7 @@ describe("evaluator adapter", () => {
       commitment: "0xabc",
       salt: "salt-1",
       bidderKey: "pk-1",
+      identitySecret: "id-secret-1",
       submittedAt: 1,
       accepted: true,
       note: "",

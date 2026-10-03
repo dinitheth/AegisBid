@@ -12,19 +12,11 @@
  */
 import { ensureBrowserBuffer } from "./polyfills";
 import { useEffect, useState } from "react";
-import { setNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
-import { FetchZkConfigProvider } from "@midnight-ntwrk/midnight-js-fetch-zk-config-provider";
-import { indexerPublicDataProvider } from "@midnight-ntwrk/midnight-js-indexer-public-data-provider";
-import { CompiledContract } from "@midnight-ntwrk/compact-js";
 import { deployContract } from "@midnight-ntwrk/midnight-js-contracts";
-import {
-  Contract,
-  TenderMode,
-} from "../../../../managed/aegis-bid/contract/index.js";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { hexToBytes, stringToBytes32 } from "./contract";
+import { buildOneAmProviders, toBindingTenderConfig } from "./providers";
 
 import {
   detectOneAm,
@@ -32,15 +24,8 @@ import {
   type OneAmInitialApi,
 } from "./oneAmWallet";
 
-const ZK_BASE =
-  (import.meta.env["VITE_ZK_CONFIG_BASE"] as string | undefined) ||
-  "https://cdn.jsdelivr.net/gh/dinitheth/AegisBid@main/managed/aegis-bid";
-
 // Bump on every deploy-flow change so screenshots identify the bundle.
-const BUILD_ID = "2026-09-21A-user-ia";
-
-const bytesToHex = (bytes: Uint8Array) =>
-  Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+const BUILD_ID = "2026-09-21B-live-bidding";
 
 function defaultDeadlineInput() {
   const date = new Date(Date.now() + 7 * 86_400_000);
@@ -69,7 +54,7 @@ function loadPublished(): PublishedTender[] {
       (entry): entry is PublishedTender =>
         typeof entry === "object" &&
         entry !== null &&
-        typeof (entry as Record<string, unknown>).address === "string",
+        typeof (entry as Record<string, unknown>)["address"] === "string",
     );
   } catch {
     return [];
@@ -164,86 +149,26 @@ export function DeployPage() {
       throw new Error(`${label}: ${last instanceof Error ? last.message : String(last)}`);
     };
     try {
-      const config = await api.getConfiguration();
-      setNetworkId(config.networkId || "preprod");
-
-      step = "downloading proving keys";
+      step = "connecting providers";
       setStatus("Downloading proving keys (one-time, ~14 MB)...");
-      const zkConfigProvider = new FetchZkConfigProvider(ZK_BASE, fetch.bind(window));
-      const publicDataProvider = indexerPublicDataProvider(config.indexerUri, config.indexerWsUri);
-
-      step = "waiting for 1AM approval";
-      setStatus("Waiting for 1AM approval...");
-      const provingProvider = await withRetry("getProvingProvider", () =>
-        api.getProvingProvider(zkConfigProvider),
+      const { providers, compiled } = await withRetry("connecting providers", () =>
+        buildOneAmProviders(api),
       );
-      const proofProvider = {
-        async proveTx(unprovenTx: {
-          prove: (prover: unknown, cost: unknown) => Promise<unknown>;
-        }) {
-          return withRetry("proving", async () => {
-            const { CostModel } = await import("@midnight-ntwrk/ledger-v8");
-            return unprovenTx.prove(provingProvider, CostModel.initialCostModel());
-          });
-        },
-      };
-      const keys = await api.getShieldedAddresses();
-      const walletProvider = {
-        getCoinPublicKey: () => keys.shieldedCoinPublicKey,
-        getEncryptionPublicKey: () => keys.shieldedEncryptionPublicKey,
-        async balanceTx(tx: { serialize: () => Uint8Array }) {
-          const result = await api.balanceUnsealedTransaction(bytesToHex(tx.serialize()));
-          const { Transaction } = await import("@midnight-ntwrk/ledger-v8");
-          return Transaction.deserialize(
-            "signature",
-            "proof",
-            "binding",
-            hexToBytes(result.tx),
-          );
-        },
-      };
-      const midnightProvider = {
-        async submitTx(tx: { serialize: () => Uint8Array; identifiers: () => string[] }) {
-          await api.submitTransaction(bytesToHex(tx.serialize()));
-          return tx.identifiers()[0] ?? "";
-        },
-      };
 
       step = "building the deployment transaction";
       setStatus("Building the deployment transaction...");
-      const witnesses = {
-        localBidAmount: ({ privateState }: { privateState: unknown }) => [privateState, 0n],
-        localBidSalt: ({ privateState }: { privateState: unknown }) => [privateState, new Uint8Array(32)],
-        localIdentitySecret: ({ privateState }: { privateState: unknown }) => [
-          privateState,
-          new Uint8Array(32),
-        ],
-        settlementBid: ({ privateState }: { privateState: unknown }) => [privateState, 0n],
-        settlementSalt: ({ privateState }: { privateState: unknown }) => [privateState, new Uint8Array(32)],
-        settlementKey: ({ privateState }: { privateState: unknown }) => [privateState, new Uint8Array(32)],
-      };
-      const compiled = CompiledContract.withCompiledFileAssets(
-        CompiledContract.withWitnesses(CompiledContract.make("aegisbid", Contract), witnesses),
-        "./managed/aegis-bid",
-      );
-      const ledgerConfig = {
-        issuer: stringToBytes32(issuer),
-        deadline: BigInt(Math.floor(new Date(deadline).getTime() / 1000)),
+      const ledgerConfig = toBindingTenderConfig({
+        issuer,
+        deadlineSec: BigInt(Math.floor(new Date(deadline).getTime() / 1000)),
         reserve: BigInt(reserve === "" ? "0" : reserve),
-        mode: mode === "lowest" ? TenderMode.LowestCompliant : TenderMode.HighestBid,
-        specificationRoot: stringToBytes32(spec),
-      };
+        mode,
+        spec,
+      });
 
       step = "proving via 1AM (approve in the wallet)";
       setStatus("Proving via 1AM (approve in the wallet)...");
       const deployed = await deployContract(
-        {
-          publicDataProvider,
-          zkConfigProvider,
-          proofProvider,
-          walletProvider,
-          midnightProvider,
-        } as Parameters<typeof deployContract>[0],
+        providers,
         { compiledContract: compiled, args: [ledgerConfig] } as Parameters<
           typeof deployContract
         >[1],

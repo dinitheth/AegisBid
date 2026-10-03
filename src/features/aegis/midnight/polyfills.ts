@@ -9,7 +9,7 @@
 import { Buffer } from "buffer";
 
 export function ensureBrowserBuffer(): void {
-  if (typeof (globalThis as Record<string, unknown>).Buffer === "undefined") {
-    (globalThis as Record<string, unknown>).Buffer = Buffer;
+  if (typeof (globalThis as Record<string, unknown>)["Buffer"] === "undefined") {
+    (globalThis as Record<string, unknown>)["Buffer"] = Buffer;
   }
 }

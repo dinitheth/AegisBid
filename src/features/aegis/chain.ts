@@ -179,6 +179,7 @@ export function activityToTenders(activity: ChainActivity): Tender[] {
         status: settled ? "Settled" : "Active",
         mode: FLAGSHIP_TENDER.mode,
         specification: `${FLAGSHIP_TENDER.specification} Live bid count below.`,
+        contractAddress: activity.state.address,
       },
     ];
   }
@@ -195,6 +196,7 @@ export function activityToTenders(activity: ChainActivity): Tender[] {
       status: settled ? "Settled" : "Active",
       mode: "Lowest compliant",
       specification: "Tender data read live from the Midnight indexer for this contract.",
+      contractAddress: activity.state.address,
     },
   ];
 }

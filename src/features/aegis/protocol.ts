@@ -11,6 +11,8 @@ export type Tender = {
   status: TenderStatus;
   mode: TenderMode;
   specification: string;
+  /** Live on-chain contract; absent for demo/simulated tenders. */
+  contractAddress?: string;
 };
 
 export const defaultTender: Tender = { id: "AGB-2026-041", title: "Grid-scale battery storage", issuer: "North Sea Energy Authority", deadline: "2026-09-14T18:00:00Z", threshold: "Reserve 4.20M tDUST", commitments: 12, status: "Active", mode: "Lowest compliant", specification: "120 MWh delivery capacity · ISO 27001 operator" };
@@ -65,6 +67,8 @@ export type StoredBid = {
   commitment: string;
   salt: string;
   bidderKey: string;
+  /** Identity witness for live settlement proofs; empty for legacy rows. */
+  identitySecret: string;
   submittedAt: number;
   accepted: boolean;
   note: string;
@@ -98,6 +102,8 @@ export function normalizeStoredBids(raw: unknown): StoredBid[] {
       commitment: record["commitment"] as string,
       salt: typeof record["salt"] === "string" ? (record["salt"] as string) : "",
       bidderKey: typeof record["bidderKey"] === "string" ? (record["bidderKey"] as string) : "",
+      identitySecret:
+        typeof record["identitySecret"] === "string" ? (record["identitySecret"] as string) : "",
       submittedAt: record["submittedAt"] as number,
       accepted: record["accepted"] === true,
       note: typeof record["note"] === "string" ? (record["note"] as string) : "",
