@@ -43,7 +43,7 @@ import {
 } from "./evaluator";
 import { useMidnightWallet } from "./wallet";
 import { getChainConfig, isConfigured } from "./chain";
-import { Suspense, lazy } from "react";
+import { Component, Suspense, lazy, type ReactNode } from "react";
 import { useChainTenders, type ChainTenders } from "./useChainTenders";
 import { OneAmWalletProvider, useOneAmWallet } from "./midnight/oneAmWallet";
 import { stringToBytes32 } from "./midnight/contract";
@@ -56,6 +56,34 @@ import logo from "@/assets/aegisbid-logo.png";
 const DeployPage = lazy(() =>
   import("./midnight/DeployPage").then((mod) => ({ default: mod.DeployPage })),
 );
+
+// A failed live-deploy chunk must not take down the whole route: show the
+// real error inline (so it can be reported) with a way back.
+class DeployErrorBoundary extends Component<
+  { children: ReactNode; onBack: () => void },
+  { failure: string | null }
+> {
+  override state = { failure: null as string | null };
+  static getDerivedStateFromError(error: unknown) {
+    return { failure: error instanceof Error ? error.message : String(error) };
+  }
+  override render() {
+    if (this.state.failure) {
+      return (
+        <div className="mx-auto max-w-2xl px-5 py-12 text-center">
+          <h1 className="font-display text-2xl font-semibold text-foreground">
+            Live deploy failed to load
+          </h1>
+          <p className="mt-2 break-words text-sm text-muted-foreground">{this.state.failure}</p>
+          <div className="mt-6 flex justify-center">
+            <Button onClick={this.props.onBack}>Back to home</Button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 type Page =
   | "home"
@@ -2072,15 +2100,17 @@ export function AegisUserApp() {
         {page === "compare" && <ComparePage bids={bids} tenders={chain.tenders} />}
         {page === "settle" && <SettlementPage bids={bids} tenders={chain.tenders} />}
         {page === "deploy" && (
-          <Suspense
-            fallback={
-              <div className="mx-auto max-w-5xl px-5 py-12 text-sm text-muted-foreground">
-                Loading live-deploy modules...
-              </div>
-            }
-          >
-            <DeployPage />
-          </Suspense>
+          <DeployErrorBoundary onBack={() => navigate("home")}>
+            <Suspense
+              fallback={
+                <div className="mx-auto max-w-5xl px-5 py-12 text-sm text-muted-foreground">
+                  Loading live-deploy modules...
+                </div>
+              }
+            >
+              <DeployPage />
+            </Suspense>
+          </DeployErrorBoundary>
         )}
         {page === "balance" && (
           <BalancePage wallet={wallet} onGoDeploy={() => navigate("deploy")} />
