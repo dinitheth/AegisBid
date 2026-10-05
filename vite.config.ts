@@ -37,11 +37,12 @@ export default defineConfig({
     },
     define: { global: "globalThis" },
     optimizeDeps: {
-      exclude: [
-        "@midnight-ntwrk/ledger-v8",
-        "@midnight-ntwrk/onchain-runtime-v3",
-        "@midnight-ntwrk/compact-runtime",
-      ],
+      // buffer + compact-runtime MUST be pre-bundled: the absolute buffer
+      // alias serves raw CJS (`require` at index.js:11) and compact-runtime's
+      // dist/error.js default-imports CJS object-inspect — both throw in the
+      // browser when served unbundled (broke the deploy chunk in dev).
+      include: ["buffer", "@midnight-ntwrk/compact-runtime"],
+      exclude: ["@midnight-ntwrk/ledger-v8", "@midnight-ntwrk/onchain-runtime-v3"],
     },
     build: { target: "esnext" },
   },
