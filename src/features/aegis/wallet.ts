@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
+import { listWalletConnectors } from "./midnight/oneAmWallet";
 
 /**
- * Midnight DApp connector (Lace Midnight preview wallet).
- * The wallet injects `window.midnight.mnLace` following the Midnight DApp connector API.
+ * Midnight DApp connector (Lace wallet).
+ * Lace injects `window.midnight.mnLace` following the Midnight DApp connector
+ * API (some builds use `lace` — detection accepts any lace-ish key).
  */
 export type MidnightWalletState = {
   address: string;
@@ -38,7 +40,11 @@ function connector(): MidnightConnector | undefined {
   if (typeof window === "undefined") return undefined;
   // Lace only: other wallets (e.g. 1AM) expose a different connector shape
   // and are handled by the Live deploy page, not this button.
-  return window.midnight?.mnLace;
+  const entry = listWalletConnectors(window.midnight).find((item) => item.kind === "lace");
+  return (
+    (entry ? (window.midnight?.[entry.key] as MidnightConnector | undefined) : undefined) ??
+    window.midnight?.mnLace
+  );
 }
 
 const NATIVE = "tDUST";
@@ -100,7 +106,9 @@ export function useMidnightWallet() {
   const connect = useCallback(async () => {
     const provider = connector();
     if (!provider) {
-      setError("No Lace wallet found. Connect 1AM on the Live deploy page, or install the Lace Midnight wallet extension.");
+      setError(
+        "No Lace wallet found. Connect 1AM on the Live deploy page, or install the Lace Midnight wallet extension.",
+      );
       return;
     }
     setConnecting(true);

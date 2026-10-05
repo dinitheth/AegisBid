@@ -1,7 +1,35 @@
 import { describe, expect, it } from "vitest";
 import { CompiledContract } from "@midnight-ntwrk/compact-js";
 import { Contract } from "../../../../managed/aegis-bid/contract/index.js";
-import { ZK_BASE, bytesToHex, toBindingTenderConfig, type AnyWitnessContext } from "./providers";
+import {
+  ZK_BASE,
+  buildLaceProviders,
+  bytesToHex,
+  toBindingTenderConfig,
+  type AnyWitnessContext,
+} from "./providers";
+import { listWalletConnectors } from "./oneAmWallet";
+import type { OneAmConnectedApi } from "./oneAmWallet";
+
+function mockConnectorApi(proving: "wallet" | "reject"): OneAmConnectedApi {
+  return {
+    getConfiguration: async () => ({
+      networkId: "preprod",
+      indexerUri: "http://localhost:8088/api/v4/graphql",
+      indexerWsUri: "ws://localhost:8088/api/v4/graphql/ws",
+    }),
+    getShieldedAddresses: async () => ({
+      shieldedCoinPublicKey: "coin",
+      shieldedEncryptionPublicKey: "enc",
+    }),
+    getProvingProvider: async () => {
+      if (proving === "reject") throw new Error("proving not supported by wallet");
+      return {};
+    },
+    balanceUnsealedTransaction: async () => ({ tx: "00" }),
+    submitTransaction: async () => undefined,
+  } as unknown as OneAmConnectedApi;
+}
 
 describe("midnight providers", () => {
   it("points ZK artifacts at the committed bindings by default", () => {
@@ -65,5 +93,52 @@ describe("midnight providers", () => {
       "./managed/aegis-bid",
     );
     expect(compiled).toBeDefined();
+  });
+
+  it("detects Lace under mnLace or lace keys, 1AM under 1am", () => {
+    const connect = async () => ({}) as never;
+    expect(listWalletConnectors(undefined)).toEqual([]);
+    expect(listWalletConnectors({})).toEqual([]);
+    const wallets = listWalletConnectors({
+      mnLace: { connect },
+      "1am": { connect },
+      other: {},
+    });
+    expect(wallets.map((entry) => entry.kind)).toEqual(["lace", "1am"]);
+    expect(wallets[0]?.key).toBe("mnLace");
+    expect(listWalletConnectors({ lace: { connect } }).map((entry) => entry.kind)).toEqual([
+      "lace",
+    ]);
+  });
+
+  // buildLaceProviders binds fetch to window (browser global); the node
+  // test env has none, so stub it for the duration of each builder call.
+  async function withBrowserWindow<T>(fn: () => Promise<T>): Promise<T> {
+    const globals = globalThis as Record<string, unknown>;
+    const prev = globals["window"];
+    globals["window"] = globalThis;
+    try {
+      return await fn();
+    } finally {
+      if (prev === undefined) delete globals["window"];
+      else globals["window"] = prev;
+    }
+  }
+
+  it("proves via the wallet when Lace delegates proving", async () => {
+    const built = await withBrowserWindow(() => buildLaceProviders(mockConnectorApi("wallet")));
+    expect(built.provingVia).toBe("wallet");
+    expect(built.providers).toBeDefined();
+    expect(built.compiled).toBeDefined();
+  });
+
+  it("falls back to the local proof server when Lace declines proving", async () => {
+    const built = await withBrowserWindow(() =>
+      buildLaceProviders(mockConnectorApi("reject"), undefined, {
+        proofServerUrl: "http://127.0.0.1:6300",
+      }),
+    );
+    expect(built.provingVia).toBe("proof-server");
+    expect(built.providers).toBeDefined();
   });
 });

@@ -1,11 +1,12 @@
 /**
- * Live deployment through the 1AM browser wallet (preprod).
- *
- * Follows the 1AM integration reference (1am.xyz/ai.txt): detect
- * `window.midnight['1am']`, connect, build providers (FetchZkConfigProvider
- * for the hosted proving keys, indexer provider from the wallet's own
- * config, proving/balance/submit delegated to the wallet), then the standard
- * `deployContract` call. ProofStation sponsors fees: user pays 0 NIGHT/DUST.
+ * Live deployment through a browser wallet (preprod): Lace preferred, 1AM
+ * fallback. Both speak the Midnight DApp connector protocol
+ * (`window.midnight[<walletId>].connect`), so detection just scans the
+ * injected keys. Providers: FetchZkConfigProvider for the hosted proving
+ * keys, indexer provider from the wallet's own config, proving delegated to
+ * the wallet when it offers (1AM/ProofStation sponsors fees: user pays 0
+ * NIGHT/DUST) or to the local proof server otherwise (Lace requires it via
+ * Docker: `VITE_PROOF_SERVER_URL`, default `http://127.0.0.1:6300`).
  *
  * ZK artifacts come from `VITE_ZK_CONFIG_BASE` (default: jsDelivr for the
  * committed `managed/aegis-bid` outputs).
@@ -16,12 +17,18 @@ import { deployContract } from "@midnight-ntwrk/midnight-js-contracts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { buildOneAmProviders, toBindingTenderConfig } from "./providers";
+import { buildLaceProviders, buildOneAmProviders, toBindingTenderConfig } from "./providers";
 
-import { detectOneAm, useOneAmWallet, type OneAmInitialApi } from "./oneAmWallet";
+import {
+  detectWalletConnectors,
+  useOneAmWallet,
+  type DetectedWallet,
+  type OneAmInitialApi,
+  type WalletKind,
+} from "./oneAmWallet";
 
 // Bump on every deploy-flow change so screenshots identify the bundle.
-const BUILD_ID = "2026-09-21B-live-bidding";
+const BUILD_ID = "2026-09-21C-lace-primary";
 
 function defaultDeadlineInput() {
   const date = new Date(Date.now() + 7 * 86_400_000);
@@ -58,7 +65,7 @@ function loadPublished(): PublishedTender[] {
 }
 
 export function DeployPage() {
-  const [wallet, setWallet] = useState<OneAmInitialApi | null>(null);
+  const [wallets, setWallets] = useState<DetectedWallet[]>([]);
   const { api, info, setConnected } = useOneAmWallet();
   const [published, setPublished] = useState<PublishedTender[]>(() => loadPublished());
   const [issuer, setIssuer] = useState("AegisBid Wave 1 demo issuer");
@@ -75,15 +82,15 @@ export function DeployPage() {
   useEffect(() => {
     let cancelled = false;
     const check = () => {
-      const found = detectOneAm();
-      if (!cancelled && found) {
-        setWallet(found);
+      const found = detectWalletConnectors();
+      if (!cancelled && found.length > 0) {
+        setWallets(found);
         return true;
       }
       return false;
     };
     if (check()) return;
-    // 1AM may inject after lock/unlock or install: keep polling softly.
+    // Wallets may inject after lock/unlock or install: keep polling softly.
     const timer = window.setInterval(() => {
       if (check()) window.clearInterval(timer);
     }, 1000);
@@ -93,24 +100,25 @@ export function DeployPage() {
     };
   }, [detectTick]);
 
-  // The 1AM extension can hang when its own backend is unreachable (its
+  // A wallet extension can hang when its own backend is unreachable (1AM's
   // full-page UI then shows "Wallet init timed out ... serverSideScan=true").
   // Never wait forever: surface a clear message instead.
   const CONNECT_TIMEOUT_MS = 90_000;
-  const connect = async () => {
-    if (!wallet) return;
+  const connect = async (kind: WalletKind) => {
+    const entry = wallets.find((item) => item.kind === kind);
+    if (!entry) return;
     setBusy(true);
     setFailure(null);
     try {
-      setStatus("Waiting for 1AM approval...");
+      setStatus(`Waiting for ${entry.label} approval...`);
       const connected = (await Promise.race([
-        wallet.connect("preprod"),
+        entry.initial.connect("preprod"),
         new Promise<never>((_, reject) =>
           window.setTimeout(
             () =>
               reject(
                 new Error(
-                  "1AM did not respond in 90s. The wallet extension itself may be stuck " +
+                  `${entry.label} did not respond in 90s. The wallet extension itself may be stuck ` +
                     "initializing (its page shows a vault/scan timeout when its backend is " +
                     "unreachable). Check your connection, reload the extension, then try again.",
                 ),
@@ -128,10 +136,13 @@ export function DeployPage() {
         networkId: config.networkId,
         unshieldedAddress: unshielded.unshieldedAddress,
         dustBalance: String(dust.balance),
+        walletName: entry.label,
       });
       setStatus(null);
     } catch (cause) {
-      setFailure(cause instanceof Error ? cause.message : "1AM connection was declined.");
+      setFailure(
+        cause instanceof Error ? cause.message : `${entry.label} connection was declined.`,
+      );
     } finally {
       setBusy(false);
     }
@@ -169,9 +180,13 @@ export function DeployPage() {
     try {
       step = "connecting providers";
       setStatus("Downloading proving keys (one-time, ~14 MB)...");
-      const { providers, compiled } = await withRetry("connecting providers", () =>
-        buildOneAmProviders(api),
+      const walletLabel = info?.walletName === "Lace" ? "Lace" : "1AM";
+      const { providers, compiled, provingVia } = await withRetry("connecting providers", () =>
+        walletLabel === "Lace" ? buildLaceProviders(api) : buildOneAmProviders(api),
       );
+      if (provingVia === "proof-server") {
+        setStatus("Wallet delegates proving: using your local proof server...");
+      }
 
       step = "building the deployment transaction";
       setStatus("Building the deployment transaction...");
@@ -183,8 +198,8 @@ export function DeployPage() {
         spec,
       });
 
-      step = "proving via 1AM (approve in the wallet)";
-      setStatus("Proving via 1AM (approve in the wallet)...");
+      step = `proving via ${walletLabel} (approve in the wallet)`;
+      setStatus(`Proving via ${walletLabel} (approve in the wallet)...`);
       const deployed = await deployContract(providers, {
         compiledContract: compiled,
         args: [ledgerConfig],
@@ -224,24 +239,26 @@ export function DeployPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-5 py-12 sm:py-16">
-      <p className="text-sm font-semibold text-primary">Preprod · 1AM wallet</p>
+      <p className="text-sm font-semibold text-primary">Preprod · Lace or 1AM wallet</p>
       <h1 className="mt-2 font-display text-4xl font-semibold text-foreground">
         Publish an opportunity
       </h1>
       <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">
         Publish a shielded tender that bidders can find in the explorer. Your policy (deadline,
         limit, selection rule) goes on-chain as a verifiable contract — bid amounts stay private.
-        Proving and fees are sponsored, so publishing costs you nothing.
+        With 1AM, proving and fees are sponsored, so publishing costs you nothing. With Lace,
+        proving runs on your local proof server (required by Lace — run it via Docker) and fees come
+        from your tDUST.
       </p>
 
       <section className="mt-8 rounded-lg border border-border bg-card p-6">
         <h2 className="font-display text-xl font-semibold text-card-foreground">
           1 · Connect wallet
         </h2>
-        {!wallet ? (
+        {wallets.length === 0 ? (
           <div className="mt-2 text-sm text-card-foreground/70">
             <p>
-              1AM wallet not detected yet. Install it from{" "}
+              No wallet detected yet. Install Lace (with Midnight support) or 1AM from{" "}
               <a
                 className="underline"
                 href="https://1am.xyz/install-beta"
@@ -258,7 +275,11 @@ export function DeployPage() {
             </p>
           </div>
         ) : info && api ? (
-          <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-3">
+          <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-4">
+            <div>
+              <dt className="text-xs text-card-foreground/60">Wallet</dt>
+              <dd className="mt-1 font-semibold text-card-foreground">{info.walletName}</dd>
+            </div>
             <div>
               <dt className="text-xs text-card-foreground/60">Network</dt>
               <dd className="mt-1 font-semibold text-card-foreground">{info.networkId}</dd>
@@ -275,9 +296,13 @@ export function DeployPage() {
             </div>
           </dl>
         ) : (
-          <Button className="mt-4" onClick={() => void connect()} disabled={busy}>
-            {busy ? "Waiting..." : "Connect 1AM (preprod)"}
-          </Button>
+          <div className="mt-4 flex flex-wrap gap-3">
+            {wallets.map((entry) => (
+              <Button key={entry.kind} onClick={() => void connect(entry.kind)} disabled={busy}>
+                {busy ? "Waiting..." : `Connect ${entry.label} (preprod)`}
+              </Button>
+            ))}
+          </div>
         )}
       </section>
 

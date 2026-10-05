@@ -12,6 +12,7 @@
         "@midnight-ntwrk/ledger-v8": "8.1.0",
         "@midnight-ntwrk/midnight-js-contracts": "4.1.1",
         "@midnight-ntwrk/midnight-js-fetch-zk-config-provider": "4.1.1",
+        "@midnight-ntwrk/midnight-js-http-client-proof-provider": "^4.1.1",
         "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "4.1.1",
         "@midnight-ntwrk/midnight-js-network-id": "4.1.1",
         "@midnight-ntwrk/midnight-js-types": "4.1.1",
@@ -264,6 +265,8 @@
     "@midnight-ntwrk/midnight-js-contracts": ["@midnight-ntwrk/midnight-js-contracts@4.1.1", "", { "dependencies": { "@midnight-ntwrk/midnight-js-network-id": "4.1.1", "@midnight-ntwrk/midnight-js-protocol": "4.1.1", "@midnight-ntwrk/midnight-js-types": "4.1.1", "@midnight-ntwrk/midnight-js-utils": "4.1.1" } }, "sha512-vHeKyaj9RXTx+Cep3YpIRgg2EWkzibO4gxI7k/rYpXmGXc3waetrR5sb9FPR7v9SUX00/zf/sYbLp1NZhwZbjg=="],
 
     "@midnight-ntwrk/midnight-js-fetch-zk-config-provider": ["@midnight-ntwrk/midnight-js-fetch-zk-config-provider@4.1.1", "", { "dependencies": { "@midnight-ntwrk/midnight-js-types": "4.1.1", "@midnight-ntwrk/midnight-js-utils": "4.1.1", "cross-fetch": "^4.1.0" } }, "sha512-d9vPAXjCvbe3KdPDBwp8Cp4HXwdo9jfCjeyJjJPfIDHCctXrIQ7btu+CqY1+bgV05FHVMOBLjJ9TS2tc2xdwrw=="],
+
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": ["@midnight-ntwrk/midnight-js-http-client-proof-provider@4.1.1", "", { "dependencies": { "@midnight-ntwrk/midnight-js-contracts": "4.1.1", "@midnight-ntwrk/midnight-js-network-id": "4.1.1", "@midnight-ntwrk/midnight-js-protocol": "4.1.1", "@midnight-ntwrk/midnight-js-types": "4.1.1", "@midnight-ntwrk/midnight-js-utils": "4.1.1", "cross-fetch": "^4.1.0", "fetch-retry": "^6.0.0" } }, "sha512-Q2VNRTvuWlf3MbjV7C3asuLHeFwtZMdh6t5Z+u8c8RDpejW9GhKaSjlJ2zgJII5ckE8/cocPEDwt3GKBebGHWA=="],
 
     "@midnight-ntwrk/midnight-js-indexer-public-data-provider": ["@midnight-ntwrk/midnight-js-indexer-public-data-provider@4.1.1", "", { "dependencies": { "@apollo/client": "^4.2.0", "@graphql-typed-document-node/core": "^3.2.0", "@midnight-ntwrk/midnight-js-network-id": "4.1.1", "@midnight-ntwrk/midnight-js-protocol": "4.1.1", "@midnight-ntwrk/midnight-js-types": "4.1.1", "@midnight-ntwrk/midnight-js-utils": "4.1.1", "buffer": "^6.0.3", "cross-fetch": "^4.1.0", "graphql": "^16.14.0", "graphql-ws": "^6.0.8", "isomorphic-ws": "^5.0.0", "rxjs": "^7.8.2", "ws": "^8.20.0" } }, "sha512-50CjiYqw/msRintyfkuNrJl1v4Zj+AaBFmV2uLjY/zpkPop4VBFH4QZSrtKsG1ljT9vzWsxU7Eo4Tn1tgKkPlA=="],
 
@@ -984,6 +987,8 @@
     "fast-levenshtein": ["fast-levenshtein@2.0.6", "", {}, "sha512-DCXu6Ifhqcks7TZKY3Hxp3y6qphY5SJZmrWMDrKcERSOXWQdMhU9Ig/PYrzyw/ul9jOIyh0N4M0tbC5hodg8dw=="],
 
     "fdir": ["fdir@6.5.0", "", { "peerDependencies": { "picomatch": "^3 || ^4" }, "optionalPeers": ["picomatch"] }, "sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg=="],
+
+    "fetch-retry": ["fetch-retry@6.0.0", "", {}, "sha512-BUFj1aMubgib37I3v4q78fYo63Po7t4HUPTpQ6/QE6yK6cIQrP+W43FYToeTEyg5m2Y7eFUtijUuAv/PDlWuag=="],
 
     "fetchdts": ["fetchdts@0.1.7", "", {}, "sha512-YoZjBdafyLIop9lSxXVI33oLD5kN31q4Td+CasofLLYeLXRFeOsuOw0Uo+XNRi9PZlbfdlN2GmRtm4tCEQ9/KA=="],
 

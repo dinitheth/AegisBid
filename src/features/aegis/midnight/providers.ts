@@ -65,52 +65,30 @@ export function toBindingTenderConfig(input: LedgerTenderInput) {
   };
 }
 
+export type ProvingVia = "wallet" | "proof-server";
+
 export type AegisProviders = {
   providers: Parameters<typeof deployContract>[0];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   compiled: any;
   publicDataProvider: ReturnType<typeof indexerPublicDataProvider>;
+  /** Where proofs come from: the wallet (1AM/ProofStation) or the local proof server (Lace fallback). */
+  provingVia: ProvingVia;
 };
 
-/**
- * Builds the provider stack + compiled contract.
- * Pass a bid to attach its real witnesses; otherwise zero stubs are used
- * (the constructor never invokes witnesses).
- */
-export async function buildOneAmProviders(
-  api: OneAmConnectedApi,
-  bid?: PrivateBidWitnesses,
-): Promise<AegisProviders> {
+/** Local proof server for wallets that don't prove in-extension (Lace). */
+export const PROOF_SERVER_URL =
+  (import.meta.env["VITE_MIDNIGHT_PROOF_SERVER"] as string | undefined) ||
+  (import.meta.env["VITE_PROOF_SERVER_URL"] as string | undefined) ||
+  "http://127.0.0.1:6300";
+
+async function buildConnectorBase(api: OneAmConnectedApi, bid?: PrivateBidWitnesses) {
   const config = await api.getConfiguration();
   setNetworkId(config.networkId || "preprod");
 
   const zkConfigProvider = new FetchZkConfigProvider(ZK_BASE, fetch.bind(window));
   const publicDataProvider = indexerPublicDataProvider(config.indexerUri, config.indexerWsUri);
 
-  const provingProvider = await api.getProvingProvider(zkConfigProvider);
-  const proofProvider = {
-    // Proving has no chain effects: retry transient (rate-limit) failures.
-    async proveTx(unprovenTx: { prove: (prover: unknown, cost: unknown) => Promise<unknown> }) {
-      let last: unknown = null;
-      for (let attempt = 1; attempt <= 3; attempt += 1) {
-        try {
-          const { CostModel } = await import("@midnight-ntwrk/ledger-v8");
-          return await unprovenTx.prove(provingProvider, CostModel.initialCostModel());
-        } catch (error) {
-          last = error;
-          const message = error instanceof Error ? error.message : String(error);
-          if (
-            !/rate|429|limit|timeout|network|fetch|econn|socket/i.test(message) ||
-            attempt === 3
-          ) {
-            throw error;
-          }
-          await new Promise((r) => setTimeout(r, attempt * 4000));
-        }
-      }
-      throw last;
-    },
-  };
   const keys = await api.getShieldedAddresses();
   const walletProvider = {
     getCoinPublicKey: () => keys.shieldedCoinPublicKey,
@@ -150,6 +128,56 @@ export async function buildOneAmProviders(
     "./managed/aegis-bid",
   );
   return {
+    config,
+    zkConfigProvider,
+    publicDataProvider,
+    walletProvider,
+    midnightProvider,
+    compiled,
+  };
+}
+
+/**
+ * Builds the provider stack + compiled contract.
+ * Pass a bid to attach its real witnesses; otherwise zero stubs are used
+ * (the constructor never invokes witnesses).
+ */
+function makeWalletProofProvider(provingProvider: unknown) {
+  return {
+    // Proving has no chain effects: retry transient (rate-limit) failures.
+    async proveTx(unprovenTx: { prove: (prover: unknown, cost: unknown) => Promise<unknown> }) {
+      let last: unknown = null;
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+          const { CostModel } = await import("@midnight-ntwrk/ledger-v8");
+          return await unprovenTx.prove(provingProvider, CostModel.initialCostModel());
+        } catch (error) {
+          last = error;
+          const message = error instanceof Error ? error.message : String(error);
+          if (
+            !/rate|429|limit|timeout|network|fetch|econn|socket/i.test(message) ||
+            attempt === 3
+          ) {
+            throw error;
+          }
+          await new Promise((r) => setTimeout(r, attempt * 4000));
+        }
+      }
+      throw last;
+    },
+  };
+}
+
+export async function buildOneAmProviders(
+  api: OneAmConnectedApi,
+  bid?: PrivateBidWitnesses,
+): Promise<AegisProviders> {
+  const { zkConfigProvider, publicDataProvider, walletProvider, midnightProvider, compiled } =
+    await buildConnectorBase(api, bid);
+
+  const provingProvider = await api.getProvingProvider(zkConfigProvider);
+  const proofProvider = makeWalletProofProvider(provingProvider);
+  return {
     providers: {
       publicDataProvider,
       zkConfigProvider,
@@ -160,6 +188,53 @@ export async function buildOneAmProviders(
     } as any,
     compiled,
     publicDataProvider,
+    provingVia: "wallet",
+  };
+}
+
+/**
+ * Lace provider stack. Tries wallet-delegated proving first; if the wallet
+ * declines (Lace proves via an external proof server, not in-extension),
+ * falls back to the local proof server — `VITE_PROOF_SERVER_URL`, default
+ * `http://127.0.0.1:6300`, which Lace itself requires running via Docker.
+ */
+export async function buildLaceProviders(
+  api: OneAmConnectedApi,
+  bid?: PrivateBidWitnesses,
+  opts?: { proofServerUrl?: string },
+): Promise<AegisProviders> {
+  const { zkConfigProvider, publicDataProvider, walletProvider, midnightProvider, compiled } =
+    await buildConnectorBase(api, bid);
+
+  let provingVia: ProvingVia = "wallet";
+  // Loose on purpose: the assembled providers object is cast for
+  // deployContract below (its generics can't express both provers).
+  let proofProvider: unknown;
+  try {
+    const provingProvider = await api.getProvingProvider(zkConfigProvider);
+    proofProvider = makeWalletProofProvider(provingProvider);
+  } catch {
+    provingVia = "proof-server";
+    const { httpClientProofProvider } =
+      await import("@midnight-ntwrk/midnight-js-http-client-proof-provider");
+    proofProvider = httpClientProofProvider(
+      opts?.proofServerUrl ?? PROOF_SERVER_URL,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      zkConfigProvider as any,
+    );
+  }
+  return {
+    providers: {
+      publicDataProvider,
+      zkConfigProvider,
+      proofProvider,
+      walletProvider,
+      midnightProvider,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any,
+    compiled,
+    publicDataProvider,
+    provingVia,
   };
 }
 
@@ -170,8 +245,16 @@ export async function submitLiveBid(input: {
   witnesses: PrivateBidWitnesses;
   bidderKey: Uint8Array;
   nowSec: bigint;
+  /** Lace uses wallet-or-proof-server proving; 1AM always delegates to the wallet. */
+  walletKind?: "lace" | "1am";
+  proofServerUrl?: string;
 }): Promise<string> {
-  const { providers, compiled } = await buildOneAmProviders(input.api, input.witnesses);
+  const laceOpts =
+    input.proofServerUrl === undefined ? undefined : { proofServerUrl: input.proofServerUrl };
+  const { providers, compiled } =
+    input.walletKind === "lace"
+      ? await buildLaceProviders(input.api, input.witnesses, laceOpts)
+      : await buildOneAmProviders(input.api, input.witnesses);
   const result = await submitCallTx(providers, {
     compiledContract: compiled,
     contractAddress: input.contractAddress,

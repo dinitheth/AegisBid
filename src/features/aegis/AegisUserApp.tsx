@@ -45,7 +45,11 @@ import { useMidnightWallet } from "./wallet";
 import { getChainConfig, isConfigured } from "./chain";
 import { Component, Suspense, lazy, type ReactNode } from "react";
 import { useChainTenders, type ChainTenders } from "./useChainTenders";
-import { OneAmWalletProvider, useOneAmWallet } from "./midnight/oneAmWallet";
+import {
+  OneAmWalletProvider,
+  detectWalletConnectors,
+  useOneAmWallet,
+} from "./midnight/oneAmWallet";
 import { stringToBytes32 } from "./midnight/contract";
 import { ensureBrowserBuffer } from "./midnight/polyfills";
 import logo from "@/assets/aegisbid-logo.png";
@@ -134,7 +138,9 @@ function WalletButton({ wallet, onMissing }: { wallet: WalletState; onMissing: (
           <p className="font-mono text-xs text-foreground">
             {shortAddress(oneAm.info.unshieldedAddress)}
           </p>
-          <p className="text-[11px] text-muted-foreground">1AM · {oneAm.info.networkId}</p>
+          <p className="text-[11px] text-muted-foreground">
+            {oneAm.info.walletName} · {oneAm.info.networkId}
+          </p>
         </div>
         <Button
           variant="ghost"
@@ -166,12 +172,14 @@ function WalletButton({ wallet, onMissing }: { wallet: WalletState; onMissing: (
       </div>
     );
   }
-  // No Lace extension here: bridge to the 1AM live-deploy flow instead of a dead button.
+  // No wallet extension connected yet: bridge to the live-deploy flow
+  // (Lace preferred, 1AM fallback) instead of a dead button.
   if (!wallet.available && !wallet.connecting) {
+    const primary = detectWalletConnectors()[0]?.label;
     return (
       <Button className="h-10 rounded-xl px-4 shadow-sm" onClick={onMissing}>
         <Wallet />
-        Connect 1AM
+        Connect {primary ?? "wallet"}
       </Button>
     );
   }
@@ -623,9 +631,11 @@ function BidPage({
     };
     const liveApi = oneAm.api;
     const liveContract = tender.contractAddress;
+    const liveKind = oneAm.info?.walletName === "Lace" ? "lace" : "1am";
+    const liveLabel = oneAm.info?.walletName ?? "wallet";
     if (liveApi && liveContract) {
       try {
-        setStage("Submitting sealed bid on preprod (approve in 1AM)");
+        setStage(`Submitting sealed bid on preprod (approve in ${liveLabel})`);
         ensureBrowserBuffer();
         // Dynamic import: the provider stack pulls WASM-backed modules that
         // must never evaluate during SSR.
@@ -641,6 +651,7 @@ function BidPage({
           },
           bidderKey: stringToBytes32(bidderKey),
           nowSec: BigInt(Math.floor(submittedAt / 1000)),
+          walletKind: liveKind,
         });
         onSubmit({
           ...base,
