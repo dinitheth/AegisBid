@@ -18,11 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { buildOneAmProviders, toBindingTenderConfig } from "./providers";
 
-import {
-  detectOneAm,
-  useOneAmWallet,
-  type OneAmInitialApi,
-} from "./oneAmWallet";
+import { detectOneAm, useOneAmWallet, type OneAmInitialApi } from "./oneAmWallet";
 
 // Bump on every deploy-flow change so screenshots identify the bundle.
 const BUILD_ID = "2026-09-21B-live-bidding";
@@ -97,13 +93,32 @@ export function DeployPage() {
     };
   }, [detectTick]);
 
+  // The 1AM extension can hang when its own backend is unreachable (its
+  // full-page UI then shows "Wallet init timed out ... serverSideScan=true").
+  // Never wait forever: surface a clear message instead.
+  const CONNECT_TIMEOUT_MS = 90_000;
   const connect = async () => {
     if (!wallet) return;
     setBusy(true);
     setFailure(null);
     try {
       setStatus("Waiting for 1AM approval...");
-      const connected = await wallet.connect("preprod");
+      const connected = (await Promise.race([
+        wallet.connect("preprod"),
+        new Promise<never>((_, reject) =>
+          window.setTimeout(
+            () =>
+              reject(
+                new Error(
+                  "1AM did not respond in 90s. The wallet extension itself may be stuck " +
+                    "initializing (its page shows a vault/scan timeout when its backend is " +
+                    "unreachable). Check your connection, reload the extension, then try again.",
+                ),
+              ),
+            CONNECT_TIMEOUT_MS,
+          ),
+        ),
+      ])) as Awaited<ReturnType<OneAmInitialApi["connect"]>>;
       const [config, unshielded, dust] = await Promise.all([
         connected.getConfiguration(),
         connected.getUnshieldedAddress(),
@@ -139,7 +154,10 @@ export function DeployPage() {
         } catch (error) {
           last = error;
           const message = error instanceof Error ? error.message : String(error);
-          if (!/rate|429|limit|timeout|network|fetch|econn|socket/i.test(message) || attempt === 3) {
+          if (
+            !/rate|429|limit|timeout|network|fetch|econn|socket/i.test(message) ||
+            attempt === 3
+          ) {
             throw new Error(`${label}: ${message}`);
           }
           setStatus(`Rate-limited during ${label} — retry ${attempt}/3...`);
@@ -167,12 +185,10 @@ export function DeployPage() {
 
       step = "proving via 1AM (approve in the wallet)";
       setStatus("Proving via 1AM (approve in the wallet)...");
-      const deployed = await deployContract(
-        providers,
-        { compiledContract: compiled, args: [ledgerConfig] } as Parameters<
-          typeof deployContract
-        >[1],
-      );
+      const deployed = await deployContract(providers, {
+        compiledContract: compiled,
+        args: [ledgerConfig],
+      } as Parameters<typeof deployContract>[1]);
       const address: string = deployed.deployTxData.public.contractAddress;
       setContractAddress(address);
       setPublished((items) => {
@@ -196,9 +212,7 @@ export function DeployPage() {
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "Deployment failed.";
       const stack =
-        cause instanceof Error && cause.stack
-          ? cause.stack.split("\n").slice(0, 4).join("\n")
-          : "";
+        cause instanceof Error && cause.stack ? cause.stack.split("\n").slice(0, 4).join("\n") : "";
       const hint = /rate|429|limit/i.test(message)
         ? " Public infra is throttling — wait a minute and retry."
         : "";
@@ -211,21 +225,29 @@ export function DeployPage() {
   return (
     <div className="mx-auto max-w-5xl px-5 py-12 sm:py-16">
       <p className="text-sm font-semibold text-primary">Preprod · 1AM wallet</p>
-      <h1 className="mt-2 font-display text-4xl font-semibold text-foreground">Publish an opportunity</h1>
+      <h1 className="mt-2 font-display text-4xl font-semibold text-foreground">
+        Publish an opportunity
+      </h1>
       <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">
-        Publish a shielded tender that bidders can find in the explorer. Your
-        policy (deadline, limit, selection rule) goes on-chain as a
-        verifiable contract — bid amounts stay private. Proving and fees are
-        sponsored, so publishing costs you nothing.
+        Publish a shielded tender that bidders can find in the explorer. Your policy (deadline,
+        limit, selection rule) goes on-chain as a verifiable contract — bid amounts stay private.
+        Proving and fees are sponsored, so publishing costs you nothing.
       </p>
 
       <section className="mt-8 rounded-lg border border-border bg-card p-6">
-        <h2 className="font-display text-xl font-semibold text-card-foreground">1 · Connect wallet</h2>
+        <h2 className="font-display text-xl font-semibold text-card-foreground">
+          1 · Connect wallet
+        </h2>
         {!wallet ? (
           <div className="mt-2 text-sm text-card-foreground/70">
             <p>
               1AM wallet not detected yet. Install it from{" "}
-              <a className="underline" href="https://1am.xyz/install-beta" target="_blank" rel="noreferrer">
+              <a
+                className="underline"
+                href="https://1am.xyz/install-beta"
+                target="_blank"
+                rel="noreferrer"
+              >
                 1am.xyz/install-beta
               </a>
               , switch it to preprod, unlock it, then{" "}
@@ -237,9 +259,20 @@ export function DeployPage() {
           </div>
         ) : info && api ? (
           <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-3">
-            <div><dt className="text-xs text-card-foreground/60">Network</dt><dd className="mt-1 font-semibold text-card-foreground">{info.networkId}</dd></div>
-            <div className="min-w-0"><dt className="text-xs text-card-foreground/60">Unshielded address</dt><dd className="mt-1 break-all font-mono text-xs text-card-foreground">{info.unshieldedAddress}</dd></div>
-            <div><dt className="text-xs text-card-foreground/60">DUST balance</dt><dd className="mt-1 font-semibold text-card-foreground">{info.dustBalance}</dd></div>
+            <div>
+              <dt className="text-xs text-card-foreground/60">Network</dt>
+              <dd className="mt-1 font-semibold text-card-foreground">{info.networkId}</dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-xs text-card-foreground/60">Unshielded address</dt>
+              <dd className="mt-1 break-all font-mono text-xs text-card-foreground">
+                {info.unshieldedAddress}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-card-foreground/60">DUST balance</dt>
+              <dd className="mt-1 font-semibold text-card-foreground">{info.dustBalance}</dd>
+            </div>
           </dl>
         ) : (
           <Button className="mt-4" onClick={() => void connect()} disabled={busy}>
@@ -249,7 +282,9 @@ export function DeployPage() {
       </section>
 
       <section className="mt-6 rounded-lg border border-border bg-card p-6">
-        <h2 className="font-display text-xl font-semibold text-card-foreground">2 · Tender policy</h2>
+        <h2 className="font-display text-xl font-semibold text-card-foreground">
+          2 · Tender policy
+        </h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="deploy-issuer">Issuer label (hashed to Bytes&lt;32&gt; on-chain)</Label>
@@ -257,15 +292,30 @@ export function DeployPage() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="deploy-deadline">Bidding deadline</Label>
-            <Input id="deploy-deadline" type="datetime-local" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+            <Input
+              id="deploy-deadline"
+              type="datetime-local"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="deploy-reserve">Reserve / ceiling (credits)</Label>
-            <Input id="deploy-reserve" inputMode="numeric" value={reserve} onChange={(e) => setReserve(e.target.value.replace(/\D/g, ""))} />
+            <Input
+              id="deploy-reserve"
+              inputMode="numeric"
+              value={reserve}
+              onChange={(e) => setReserve(e.target.value.replace(/\D/g, ""))}
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="deploy-mode">Selection rule</Label>
-            <select id="deploy-mode" value={mode} onChange={(e) => setMode(e.target.value as "highest" | "lowest")} className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground">
+            <select
+              id="deploy-mode"
+              value={mode}
+              onChange={(e) => setMode(e.target.value as "highest" | "lowest")}
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
+            >
               <option value="highest">Highest bid at or above reserve</option>
               <option value="lowest">Lowest offer at or below ceiling</option>
             </select>
@@ -287,12 +337,20 @@ export function DeployPage() {
             {busy ? (status ?? "Working...") : "Publish opportunity"}
           </Button>
         </div>
-        {status && !busy ? null : status && <p className="mt-3 text-sm text-muted-foreground">{status}</p>}
-        {failure && <p className="mt-4 whitespace-pre-wrap break-all rounded-md border border-destructive/40 bg-destructive/10 p-3 font-mono text-xs text-destructive">{failure}</p>}
+        {status && !busy
+          ? null
+          : status && <p className="mt-3 text-sm text-muted-foreground">{status}</p>}
+        {failure && (
+          <p className="mt-4 whitespace-pre-wrap break-all rounded-md border border-destructive/40 bg-destructive/10 p-3 font-mono text-xs text-destructive">
+            {failure}
+          </p>
+        )}
         {contractAddress && (
           <div className="mt-4 rounded-md border border-success/30 bg-card p-4">
             <p className="text-xs text-card-foreground/60">Contract address</p>
-            <p className="mt-1 break-all font-mono text-sm text-card-foreground">{contractAddress}</p>
+            <p className="mt-1 break-all font-mono text-sm text-card-foreground">
+              {contractAddress}
+            </p>
             <a
               className="mt-2 inline-block text-sm underline"
               href={`https://explorer.1am.xyz/address/${contractAddress}?network=preprod`}
@@ -307,21 +365,34 @@ export function DeployPage() {
 
       {published.length > 0 && (
         <section className="mt-6 rounded-lg border border-border bg-card p-6">
-          <h2 className="font-display text-xl font-semibold text-card-foreground">Your published opportunities</h2>
-          <p className="mt-1 text-sm text-card-foreground/70">Tenders you published from this device. Bidders find them in the explorer; amounts stay sealed.</p>
+          <h2 className="font-display text-xl font-semibold text-card-foreground">
+            Your published opportunities
+          </h2>
+          <p className="mt-1 text-sm text-card-foreground/70">
+            Tenders you published from this device. Bidders find them in the explorer; amounts stay
+            sealed.
+          </p>
           <div className="mt-4 space-y-3">
             {published.map((item) => (
               <article key={item.address} className="rounded-md border border-border p-4 text-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-semibold text-card-foreground">{item.issuer}</p>
                   <p className="font-display font-semibold text-primary">
-                    {Number(item.reserve).toLocaleString()} credits · {item.mode === "lowest" ? "lowest wins" : "highest wins"}
+                    {Number(item.reserve).toLocaleString()} credits ·{" "}
+                    {item.mode === "lowest" ? "lowest wins" : "highest wins"}
                   </p>
                 </div>
-                <p className="mt-1 break-all font-mono text-xs text-card-foreground/60">{item.address}</p>
+                <p className="mt-1 break-all font-mono text-xs text-card-foreground/60">
+                  {item.address}
+                </p>
                 <div className="mt-2 flex flex-wrap gap-3 text-xs text-card-foreground/60">
                   <span>Published {new Date(item.deployedAt).toLocaleString()}</span>
-                  <a className="underline" href={`https://explorer.1am.xyz/address/${item.address}?network=preprod`} target="_blank" rel="noreferrer">
+                  <a
+                    className="underline"
+                    href={`https://explorer.1am.xyz/address/${item.address}?network=preprod`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     View on explorer
                   </a>
                 </div>
