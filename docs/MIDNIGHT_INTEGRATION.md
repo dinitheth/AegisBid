@@ -29,8 +29,14 @@
   `expected instance of …` WASM failures); pin `compact-runtime@0.16.0` to
   match the bindings; give the proof server swap (it OOMs proving `settle`
   on small boxes — exit 137).
-- Browser wallet (`wallet.ts`, Lace connector) and read-only indexer view
-  (`chain.ts`) are wired but untested against a live chain.
+- Browser wallets: Lace (primary) + 1AM (fallback) share the Midnight DApp
+  connector protocol (`oneAmWallet.tsx` scans `window.midnight` keys —
+  `mnLace`/`lace` first, `1am` second). Both plug into the same provider
+  stack (`providers.ts`): 1AM delegates proving to the wallet (fees
+  sponsored); Lace tries wallet proving, then falls back to the local proof
+  server (`VITE_MIDNIGHT_PROOF_SERVER`, default `http://127.0.0.1:6300` —
+  run it via Docker, as Lace requires). Deploy page offers both connects;
+  bidding submits through whichever wallet is connected.
 
 Pinned versions (docs support matrix, Sep 2026): Midnight.js `4.1.1`,
 compact toolchain `0.31.1`, proof server `8.1.0`, indexer v4.
