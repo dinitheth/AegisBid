@@ -1485,8 +1485,12 @@ function SettlementPage({ bids, tenders }: { bids: SubmittedBid[]; tenders: Tend
           </div>
         </div>
         <p className="mt-2 text-sm text-card-foreground/70">
-          {autoWitnesses.length} from this device · {manual.length} added manually. The evaluator
-          supplies every committed witness; the circuit rejects incomplete or uncommitted sets.
+          {tender.commitments > 0
+            ? `${witnesses.length} of ${tender.commitments} committed offers supplied. `
+            : `${autoWitnesses.length} from this device · ${manual.length} added manually. `}
+          Only bids made on this device load on their own — sealed amounts never touch the chain,
+          so each other bidder must share their amount and key with you after closing. The circuit
+          rejects incomplete or uncommitted sets.
         </p>
         {witnesses.length === 0 ? (
           <div className="mt-4 rounded-md border border-dashed border-border p-6 text-center text-sm text-card-foreground/70">
