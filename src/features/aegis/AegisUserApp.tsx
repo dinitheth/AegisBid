@@ -306,7 +306,8 @@ function Home({
   onOpen: (tender: Tender) => void;
   tenders: Tender[];
 }) {
-  const open = tenders.filter((tender) => tender.status === "Active");
+  // Home teases only the two latest — the full list lives one click away.
+  const open = tenders.filter((tender) => tender.status === "Active").slice(0, 2);
   return (
     <>
       <section className="relative min-h-[34rem] overflow-hidden border-b border-border bg-hero">
