@@ -20,7 +20,6 @@ import {
   defaultTender,
   formatCountdown,
   generateNonce,
-  initialTenders,
   normalizeStoredBids,
   type StoredBid,
   type Tender,
@@ -376,12 +375,14 @@ function Home({
   onBrowse,
   onLearn,
   onOpen,
+  tenders,
 }: {
   onBrowse: () => void;
   onLearn: () => void;
   onOpen: (tender: Tender) => void;
+  tenders: Tender[];
 }) {
-  const open = initialTenders.filter((tender) => tender.status === "Active");
+  const open = tenders.filter((tender) => tender.status === "Active");
   return (
     <>
       <section className="relative min-h-[34rem] overflow-hidden border-b border-border bg-hero">
@@ -510,6 +511,11 @@ function Home({
               <TenderCard key={tender.id} tender={tender} onOpen={onOpen} />
             ))}
           </div>
+          {open.length === 0 && (
+            <p className="mt-8 rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
+              No open tenders right now. Publish one to open bidding.
+            </p>
+          )}
         </div>
       </section>
     </>
@@ -1816,8 +1822,8 @@ function SettlementPage({ bids, tenders }: { bids: SubmittedBid[]; tenders: Tend
   );
 }
 
-function Results() {
-  const completed = initialTenders.filter((tender) => tender.status !== "Active");
+function Results({ tenders }: { tenders: Tender[] }) {
+  const completed = tenders.filter((tender) => tender.status !== "Active");
   return (
     <div className="mx-auto max-w-5xl px-5 py-12 sm:py-16">
       <p className="text-sm font-semibold text-primary">Transparent outcomes</p>
@@ -2118,6 +2124,7 @@ export function AegisUserApp() {
             onBrowse={() => navigate("tenders")}
             onLearn={() => navigate("about")}
             onOpen={openTender}
+            tenders={chain.tenders}
           />
         )}
         {page === "tenders" && (
@@ -2160,7 +2167,7 @@ export function AegisUserApp() {
         {page === "balance" && (
           <BalancePage wallet={wallet} onGoDeploy={() => navigate("deploy")} />
         )}
-        {page === "results" && <Results />}
+        {page === "results" && <Results tenders={chain.tenders} />}
         {page === "about" && <HowItWorks />}
         <SiteFooter onNavigate={navigate} chain={chain} />
       </main>
