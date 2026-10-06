@@ -28,9 +28,6 @@ import {
   type WalletKind,
 } from "./oneAmWallet";
 
-// Bump on every deploy-flow change so screenshots identify the bundle.
-const BUILD_ID = "2026-09-21C-lace-primary";
-
 function defaultDeadlineInput() {
   const date = new Date(Date.now() + 7 * 86_400_000);
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -350,10 +347,7 @@ export function DeployPage() {
       </section>
 
       <section className="mt-6 rounded-lg border border-border bg-section p-6">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 className="font-display text-xl font-semibold text-foreground">3 · Publish</h2>
-          <span className="font-mono text-[11px] text-muted-foreground">build {BUILD_ID}</span>
-        </div>
+        <h2 className="font-display text-xl font-semibold text-foreground">3 · Publish</h2>
         <div className="mt-4 flex flex-wrap gap-2">
           <Button size="lg" onClick={() => void deploy()} disabled={!api || busy || !deadline}>
             {busy ? (status ?? "Working...") : "Publish opportunity"}
