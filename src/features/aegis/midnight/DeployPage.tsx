@@ -335,6 +335,10 @@ export function DeployPage() {
               value={reserve}
               onChange={(e) => setReserve(e.target.value.replace(/\D/g, ""))}
             />
+            <p className="text-xs leading-5 text-card-foreground/60">
+              Lowest offer you will accept, in the tender&apos;s own credits — the same unit
+              bidders type as their offer amount. Not tDUST: tDUST only pays network fees.
+            </p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="deploy-mode">Selection rule</Label>
