@@ -39,11 +39,11 @@ export function DeployPage() {
   const [wallets, setWallets] = useState<DetectedWallet[]>([]);
   const { api, info, setConnected } = useOneAmWallet();
   const [published, setPublished] = useState<PublishedTender[]>(() => loadPublishedTenders());
-  const [issuer, setIssuer] = useState("AegisBid Wave 1 demo issuer");
+  const [issuer, setIssuer] = useState("Municipal Works Department");
   const [deadline, setDeadline] = useState(defaultDeadlineInput);
   const [reserve, setReserve] = useState("1000");
   const [mode, setMode] = useState<"highest" | "lowest">("highest");
-  const [spec, setSpec] = useState("AegisBid demo specification");
+  const [spec, setSpec] = useState("Road resurfacing — 2 km urban carriageway");
   const [status, setStatus] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [contractAddress, setContractAddress] = useState<string | null>(null);
