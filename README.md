@@ -96,6 +96,8 @@ proven end-to-end on a local devnet (`submitBid` → `beginEvaluation` →
 - Check status: `bun run midnight:status`
 - Real-chain path: [`docs/MIDNIGHT_INTEGRATION.md`](docs/MIDNIGHT_INTEGRATION.md) (endpoints in [`src/features/aegis/midnight/networks.ts`](src/features/aegis/midnight/networks.ts), ledger mapping + witnesses in [`src/features/aegis/midnight/contract.ts`](src/features/aegis/midnight/contract.ts), browser deploy in [`src/features/aegis/midnight/DeployPage.tsx`](src/features/aegis/midnight/DeployPage.tsx))
 - Configure a deployment: copy [`.env.example`](.env.example), set `VITE_MIDNIGHT_NETWORK_ID` and `VITE_AEGISBID_CONTRACT`.
+- Hosting: `bun run build` serves a Node server for the VPS (`nitro` `node-server` preset); on Vercel (`VERCEL=1`) it emits `.vercel/output` with a Node.js serverless function instead — never Edge (the ledger stack cannot run on workerd-style runtimes).
+- Global tender discovery needs the shared registry: set server-only `TENDER_REGISTRY_URL` + `TENDER_REGISTRY_TOKEN` (Upstash Redis REST; see `.env.example`). Without them, publishing stays device-local.
 
 ## Privacy guarantees and limits
 
