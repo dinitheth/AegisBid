@@ -36,15 +36,62 @@ function defaultDeadlineInput() {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+/** Rotating realistic examples so each new tender starts from a fresh sample. */
+type SamplePolicy = {
+  issuer: string;
+  spec: string;
+  reserve: string;
+  mode: "highest" | "lowest";
+};
+
+const SAMPLE_POLICIES: SamplePolicy[] = [
+  {
+    issuer: "Municipal Works Department",
+    spec: "Road resurfacing — 2 km urban carriageway",
+    reserve: "1000",
+    mode: "highest",
+  },
+  {
+    issuer: "City Water Board",
+    spec: "Supply and install 200 household water meters",
+    reserve: "2500",
+    mode: "lowest",
+  },
+  {
+    issuer: "Public School District",
+    spec: "500 classroom desks with delivery and assembly",
+    reserve: "8000",
+    mode: "lowest",
+  },
+  {
+    issuer: "Regional Hospital",
+    spec: "1,000 cotton bedsheets, hospital grade",
+    reserve: "3000",
+    mode: "lowest",
+  },
+  {
+    issuer: "Parks Authority",
+    spec: "Central park landscaping plus 12-month maintenance",
+    reserve: "5000",
+    mode: "highest",
+  },
+];
+
+function randomSampleIndex() {
+  return Math.floor(Math.random() * SAMPLE_POLICIES.length);
+}
+
 export function DeployPage() {
   const [wallets, setWallets] = useState<DetectedWallet[]>([]);
   const { api, info, setConnected } = useOneAmWallet();
   const [published, setPublished] = useState<PublishedTender[]>(() => loadPublishedTenders());
-  const [issuer, setIssuer] = useState("Municipal Works Department");
+  const [sampleIndex, setSampleIndex] = useState(randomSampleIndex);
+  const sample = (SAMPLE_POLICIES[sampleIndex] ?? SAMPLE_POLICIES[0]) as SamplePolicy;
+  const [issuer, setIssuer] = useState(sample.issuer);
   const [deadline, setDeadline] = useState(defaultDeadlineInput);
-  const [reserve, setReserve] = useState("1000");
-  const [mode, setMode] = useState<"highest" | "lowest">("highest");
-  const [spec, setSpec] = useState("Road resurfacing — 2 km urban carriageway");
+  const [reserve, setReserve] = useState(sample.reserve);
+  const [mode, setMode] = useState<"highest" | "lowest">(sample.mode);
+  const [spec, setSpec] = useState(sample.spec);
   const [status, setStatus] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [contractAddress, setContractAddress] = useState<string | null>(null);
@@ -189,6 +236,16 @@ export function DeployPage() {
         savePublishedTenders(next);
         return next;
       });
+      // Fresh sample for the next tender — the form never repeats itself.
+      const upcoming = SAMPLE_POLICIES[(sampleIndex + 1) % SAMPLE_POLICIES.length];
+      if (upcoming) {
+        setSampleIndex((sampleIndex + 1) % SAMPLE_POLICIES.length);
+        setIssuer(upcoming.issuer);
+        setSpec(upcoming.spec);
+        setReserve(upcoming.reserve);
+        setMode(upcoming.mode);
+        setDeadline(defaultDeadlineInput());
+      }
       setStatus(null);
     } catch (cause) {
       // Full technical detail stays in the console; the screen gets one
