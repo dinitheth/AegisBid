@@ -281,11 +281,11 @@ export function DeployPage() {
               No wallet detected yet. Install Lace (with Midnight support) or 1AM from{" "}
               <a
                 className="underline"
-                href="https://1am.xyz/install-beta"
+                href="https://chromewebstore.google.com/detail/1am/bphnkdkcnfhompoegfpgnkidcjfbojjp"
                 target="_blank"
                 rel="noreferrer"
               >
-                1am.xyz/install-beta
+                the Chrome Web Store
               </a>
               , switch it to preprod, unlock it, then{" "}
               <button className="underline" onClick={() => setDetectTick((n) => n + 1)}>
