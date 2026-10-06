@@ -1516,9 +1516,8 @@ function SettlementPage({ bids, tenders }: { bids: SubmittedBid[]; tenders: Tend
       <p className="text-sm font-semibold text-primary">Evaluator flow</p>
       <h1 className="mt-2 font-display text-4xl font-semibold text-foreground">Settle a tender</h1>
       <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">
-        Reconstruct the commitment set, open evaluation after closing, then prove the winner with
-        the same checks as <span className="font-mono text-xs">contracts/aegis_bid.compact</span>.
-        Only the winning value is disclosed.
+        Reconstruct the commitment set, open evaluation after closing, then prove the winner
+        with the same on-chain checks. Only the winning value is disclosed.
       </p>
 
       <section className="mt-8 grid gap-4 rounded-lg border border-border bg-card p-6 sm:grid-cols-3">
