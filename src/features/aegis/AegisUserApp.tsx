@@ -601,8 +601,11 @@ function BidPage({
   const balance = Number(wallet.balanceRaw) / 1_000_000;
   const fee = 0.35;
   const enough = !wallet.connected || balance >= fee;
+  // The on-chain circuit refuses late bids (DEADLINE_ELAPSED) — check up
+  // front so nobody pays for a transaction the contract will reject.
+  const biddingClosed = new Date(tender.deadline).getTime() <= Date.now();
   const submit = async () => {
-    if (!amount || !agreed) return;
+    if (!amount || !agreed || biddingClosed) return;
     setSending(true);
     setFailure(null);
     const submittedAt = Date.now();
@@ -634,6 +637,13 @@ function BidPage({
     const liveKind = oneAm.info?.walletName === "Lace" ? "lace" : "1am";
     const liveLabel = oneAm.info?.walletName ?? "wallet";
     if (liveApi && liveContract) {
+      if (biddingClosed) {
+        const reason = `Bidding closed on ${new Date(tender.deadline).toLocaleString()} — the contract no longer accepts offers for this tender.`;
+        setFailure(reason);
+        onSubmit({ ...base, receipt: commitment, onChain: false, accepted: false, note: reason });
+        setSending(false);
+        return;
+      }
       try {
         setStage(`Submitting sealed bid on preprod (approve in ${liveLabel})`);
         ensureBrowserBuffer();
@@ -730,6 +740,12 @@ function BidPage({
               ? "Live preprod tender — bids settle on-chain"
               : "Demo tender — bids record locally on this device"}
           </p>
+          {biddingClosed && (
+            <p className="mt-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+              Bidding closed on {new Date(tender.deadline).toLocaleString()}. This tender no longer
+              accepts offers — on-chain bids would be rejected.
+            </p>
+          )}
           <div className="mt-6 rounded-md border border-border bg-muted/40 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="flex items-center gap-2 text-sm font-semibold text-card-foreground">
@@ -738,7 +754,7 @@ function BidPage({
               </p>
               {oneAm.info ? (
                 <p className="font-mono text-xs text-card-foreground/60">
-                  1AM · {shortAddress(oneAm.info.unshieldedAddress)}
+                  {oneAm.info.walletName} · {shortAddress(oneAm.info.unshieldedAddress)}
                 </p>
               ) : wallet.connected && wallet.wallet ? (
                 <p className="font-mono text-xs text-card-foreground/60">
@@ -755,16 +771,16 @@ function BidPage({
                 </Button>
               ) : (
                 <Button size="sm" variant="outline" onClick={onGoDeploy}>
-                  Connect 1AM
+                  Connect wallet
                 </Button>
               )}
             </div>
             <p className="mt-2 text-sm text-card-foreground/70">
               {oneAm.info
-                ? `Connected with 1AM on ${oneAm.info.networkId}. Your sealed offer binds to this address.`
+                ? `Connected with ${oneAm.info.walletName} on ${oneAm.info.networkId}. Your sealed offer binds to this address.`
                 : wallet.connected
                   ? `Available balance ${wallet.balance} tDUST · estimated network fee ${fee} tDUST`
-                  : "Connect 1AM to bind this offer to your wallet, or continue without a wallet."}
+                  : "Connect a wallet to bind this offer to it, or continue without a wallet."}
             </p>
             {wallet.error && <p className="mt-2 text-sm text-destructive">{wallet.error}</p>}
             {!enough && (
@@ -806,7 +822,7 @@ function BidPage({
           <Button
             size="lg"
             className="mt-6 w-full"
-            disabled={!amount || !agreed || sending || !enough}
+            disabled={!amount || !agreed || sending || !enough || biddingClosed}
             onClick={() => void submit()}
           >
             {sending ? (stage ?? "Working...") : "Submit private offer"}
