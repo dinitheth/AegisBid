@@ -245,11 +245,7 @@ export function DeployPage() {
         Publish an opportunity
       </h1>
       <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">
-        Publish a shielded tender that bidders can find in the explorer. Your policy (deadline,
-        limit, selection rule) goes on-chain as a verifiable contract — bid amounts stay private.
-        With 1AM, proving and fees are sponsored, so publishing costs you nothing. With Lace,
-        proving runs on your local proof server (required by Lace — run it via Docker) and fees come
-        from your tDUST.
+        Describe the work, set a closing date and a minimum price, then publish it for bidders.
       </p>
 
       <section className="mt-8 rounded-lg border border-border bg-card p-6">
@@ -276,7 +272,7 @@ export function DeployPage() {
             </p>
           </div>
         ) : info && api ? (
-          <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-4">
+          <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-3">
             <div>
               <dt className="text-xs text-card-foreground/60">Wallet</dt>
               <dd className="mt-1 font-semibold text-card-foreground">{info.walletName}</dd>
@@ -284,12 +280,6 @@ export function DeployPage() {
             <div>
               <dt className="text-xs text-card-foreground/60">Network</dt>
               <dd className="mt-1 font-semibold text-card-foreground">{info.networkId}</dd>
-            </div>
-            <div className="min-w-0">
-              <dt className="text-xs text-card-foreground/60">Unshielded address</dt>
-              <dd className="mt-1 break-all font-mono text-xs text-card-foreground">
-                {info.unshieldedAddress}
-              </dd>
             </div>
             <div>
               <dt className="text-xs text-card-foreground/60">DUST balance</dt>
@@ -315,7 +305,7 @@ export function DeployPage() {
         </h2>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="deploy-issuer">Issuer label (hashed to Bytes&lt;32&gt; on-chain)</Label>
+            <Label htmlFor="deploy-issuer">Issuer name</Label>
             <Input id="deploy-issuer" value={issuer} onChange={(e) => setIssuer(e.target.value)} />
           </div>
           <div className="space-y-1.5">
