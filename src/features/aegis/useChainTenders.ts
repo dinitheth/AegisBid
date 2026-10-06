@@ -11,7 +11,7 @@ import {
   type ChainActivity,
   type ChainConfig,
 } from "./chain";
-import { initialTenders, type Tender } from "./protocol";
+import { type Tender } from "./protocol";
 
 export type ChainTenders = {
   config: ChainConfig;
@@ -61,7 +61,10 @@ export function useChainTenders(): ChainTenders {
     void load(saved);
   }, [load]);
 
-  const base = activity ? activityToTenders(activity) : initialTenders;
+  // No demo fallback: when the indexer is unreachable the directory shows
+  // only tenders published from this device (possibly none) instead of
+  // fictional listings.
+  const base = activity ? activityToTenders(activity) : [];
   const known = new Set(base.map((tender) => tender.contractAddress ?? tender.id));
   // Newest first: device publishes (stored newest-first) ahead of chain
   // records, so home and directory always lead with the latest opportunity.

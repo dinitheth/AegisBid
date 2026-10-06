@@ -17,7 +17,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  defaultTender,
   formatCountdown,
   generateNonce,
   normalizeStoredBids,
@@ -1238,7 +1237,24 @@ function loadSettlements(): SettlementRecord[] {
 }
 
 function SettlementPage({ bids, tenders }: { bids: SubmittedBid[]; tenders: Tender[] }) {
-  const fallbackTender = tenders[0] ?? defaultTender;
+  if (tenders.length === 0) {
+    return (
+      <div className="mx-auto max-w-5xl px-5 py-12 sm:py-16">
+        <p className="text-sm font-semibold text-primary">Evaluator flow</p>
+        <h1 className="mt-2 font-display text-4xl font-semibold text-foreground">
+          Settle a tender
+        </h1>
+        <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">
+          No tenders available. Publish one first, then return here to evaluate it.
+        </p>
+      </div>
+    );
+  }
+  return <SettlementWorkbench bids={bids} tenders={tenders} />;
+}
+
+function SettlementWorkbench({ bids, tenders }: { bids: SubmittedBid[]; tenders: Tender[] }) {
+  const fallbackTender = tenders[0] as Tender;
   const [tenderId, setTenderId] = useState(fallbackTender.id);
   const [reserveInput, setReserveInput] = useState("");
   const [manual, setManual] = useState<BidWitness[]>([]);
@@ -1488,8 +1504,8 @@ function SettlementPage({ bids, tenders }: { bids: SubmittedBid[]; tenders: Tend
           {tender.commitments > 0
             ? `${witnesses.length} of ${tender.commitments} committed offers supplied. `
             : `${autoWitnesses.length} from this device · ${manual.length} added manually. `}
-          Only bids made on this device load on their own — sealed amounts never touch the chain,
-          so each other bidder must share their amount and key with you after closing. The circuit
+          Only bids made on this device load on their own — sealed amounts never touch the chain, so
+          each other bidder must share their amount and key with you after closing. The circuit
           rejects incomplete or uncommitted sets.
         </p>
         {witnesses.length === 0 ? (
@@ -1812,9 +1828,7 @@ function HowItWorks() {
               ledger. Settlement proofs verify ordering and eligibility without revealing losing
               values.
             </p>
-            <p className="mt-3 font-mono text-xs">
-              Protocol simulation: Compact circuit v0.9.4 · Local demonstration
-            </p>
+            <p className="mt-3 font-mono text-xs">Compact circuits · Live on Midnight preprod</p>
           </div>
         )}
       </div>
@@ -1901,12 +1915,12 @@ function SiteFooter({
                   className={`inline-block size-2 rounded-full ${connected ? "bg-success" : "bg-warning"}`}
                   aria-hidden="true"
                 />
-                {connected ? "Connected to Midnight Network" : "Demonstration data"}
+                {connected ? "Connected to Midnight Network" : "Not connected"}
               </p>
               <p className="mt-2 text-xs leading-5 text-muted-foreground">
                 {connected
                   ? "Tenders, bids and results are read from the live ledger."
-                  : "Example tenders are shown. Connect a network in Network settings to read live data."}
+                  : "Tender data is unavailable until the network is reachable."}
               </p>
             </div>
           </div>
@@ -1925,7 +1939,7 @@ function SiteFooter({
 
 export function AegisUserApp() {
   const [page, setPage] = useState<Page>("home");
-  const [selected, setSelected] = useState<Tender>(defaultTender);
+  const [selected, setSelected] = useState<Tender | null>(null);
   const [bids, setBids] = useState<SubmittedBid[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const wallet = useMidnightWallet();
@@ -2024,7 +2038,7 @@ export function AegisUserApp() {
         {page === "tenders" && (
           <Tenders onOpen={openTender} onPublish={() => navigate("deploy")} chain={chain} />
         )}
-        {page === "bid" && (
+        {page === "bid" && selected && (
           <BidPage
             wallet={wallet}
             tender={selected}

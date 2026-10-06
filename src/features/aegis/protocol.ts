@@ -11,19 +11,9 @@ export type Tender = {
   status: TenderStatus;
   mode: TenderMode;
   specification: string;
-  /** Live on-chain contract; absent for demo/simulated tenders. */
+  /** Live on-chain contract address. */
   contractAddress?: string;
 };
-
-export const defaultTender: Tender = { id: "AGB-2026-041", title: "Grid-scale battery storage", issuer: "North Sea Energy Authority", deadline: "2026-09-14T18:00:00Z", threshold: "Reserve 4.20M tDUST", commitments: 12, status: "Active", mode: "Lowest compliant", specification: "120 MWh delivery capacity · ISO 27001 operator" };
-
-export const initialTenders: Tender[] = [
-  defaultTender,
-  { id: "AGB-2026-039", title: "Sovereign fiber backbone", issuer: "Civic Infrastructure Board", deadline: "2026-09-12T09:30:00Z", threshold: "Ceiling 8.75M tDUST", commitments: 8, status: "Active", mode: "Lowest compliant", specification: "420 km route · 99.995% availability" },
-  { id: "AGB-2026-036", title: "Spectrum license block C7", issuer: "Digital Markets Office", deadline: "2026-09-11T13:00:00Z", threshold: "Reserve 12.00M tDUST", commitments: 21, status: "Evaluating", mode: "Highest bid", specification: "20-year operating license · region C7" },
-  { id: "AGB-2026-031", title: "Municipal compute framework", issuer: "Canton Procurement Office", deadline: "2026-09-04T16:00:00Z", threshold: "Ceiling 2.10M tDUST", commitments: 6, status: "Settled", mode: "Lowest compliant", specification: "Confidential cloud capacity · 36 months" },
-  { id: "AGB-2026-027", title: "Carbon removal tranche 08", issuer: "Climate Reserve DAO", deadline: "2026-08-28T12:00:00Z", threshold: "Reserve 880K tDUST", commitments: 17, status: "Settled", mode: "Highest bid", specification: "Verified removal units · vintage 2027" },
-];
 
 /**
  * DISPLAY-ONLY truncated hash for receipts and short labels.
@@ -95,10 +85,13 @@ export function normalizeStoredBids(raw: unknown): StoredBid[] {
     bids.push({
       tenderId: record["tenderId"] as string,
       tenderTitle: record["tenderTitle"] as string,
-      tenderStatus: status === "Active" || status === "Evaluating" || status === "Settled" ? status : "Active",
+      tenderStatus:
+        status === "Active" || status === "Evaluating" || status === "Settled" ? status : "Active",
       amount: record["amount"] as string,
       receipt:
-        typeof record["receipt"] === "string" ? (record["receipt"] as string) : (record["commitment"] as string),
+        typeof record["receipt"] === "string"
+          ? (record["receipt"] as string)
+          : (record["commitment"] as string),
       commitment: record["commitment"] as string,
       salt: typeof record["salt"] === "string" ? (record["salt"] as string) : "",
       bidderKey: typeof record["bidderKey"] === "string" ? (record["bidderKey"] as string) : "",
@@ -122,7 +115,47 @@ export const proofStages = [
 ] as const;
 
 export const simulations = [
-  { id: "sealed", name: "Three-party sealed bid", detail: "Proves a maximum across three committed bids while redacting two losing values.", logs: ["Deploy tender AGB-SIM-001 with reserve 1,000", "Commit bidder A: 0x1a76…c901", "Commit bidder B: 0x84f2…73de", "Commit bidder C: 0x029b…ea41", "Close tender at ledger time 1,789,120", "Verify three membership proofs", "Prove winner >= each committed candidate", "Publish winner commitment 0x84f2…73de", "Assert losing values absent from public receipt"] },
-  { id: "reserve", name: "Under-reserve rejection", detail: "Rejects settlement when the maximum committed value does not satisfy reserve.", logs: ["Deploy highest-bid tender with reserve 5,000", "Commit private bid A", "Commit private bid B", "Advance ledger beyond deadline", "Evaluate maximum witness: 4,920", "Constraint winningAmount >= reserve failed as expected", "Assert settlement state remains empty"] },
-  { id: "deadline", name: "Post-deadline submission", detail: "Rejects a valid commitment submitted after the immutable close time.", logs: ["Deploy tender with deadline 1,789,200", "Advance ledger time to 1,789,201", "Construct valid private witness", "Invoke submitBid", "Constraint now < tender.deadline failed as expected", "Assert commitment count unchanged"] },
+  {
+    id: "sealed",
+    name: "Three-party sealed bid",
+    detail: "Proves a maximum across three committed bids while redacting two losing values.",
+    logs: [
+      "Deploy tender AGB-SIM-001 with reserve 1,000",
+      "Commit bidder A: 0x1a76…c901",
+      "Commit bidder B: 0x84f2…73de",
+      "Commit bidder C: 0x029b…ea41",
+      "Close tender at ledger time 1,789,120",
+      "Verify three membership proofs",
+      "Prove winner >= each committed candidate",
+      "Publish winner commitment 0x84f2…73de",
+      "Assert losing values absent from public receipt",
+    ],
+  },
+  {
+    id: "reserve",
+    name: "Under-reserve rejection",
+    detail: "Rejects settlement when the maximum committed value does not satisfy reserve.",
+    logs: [
+      "Deploy highest-bid tender with reserve 5,000",
+      "Commit private bid A",
+      "Commit private bid B",
+      "Advance ledger beyond deadline",
+      "Evaluate maximum witness: 4,920",
+      "Constraint winningAmount >= reserve failed as expected",
+      "Assert settlement state remains empty",
+    ],
+  },
+  {
+    id: "deadline",
+    name: "Post-deadline submission",
+    detail: "Rejects a valid commitment submitted after the immutable close time.",
+    logs: [
+      "Deploy tender with deadline 1,789,200",
+      "Advance ledger time to 1,789,201",
+      "Construct valid private witness",
+      "Invoke submitBid",
+      "Constraint now < tender.deadline failed as expected",
+      "Assert commitment count unchanged",
+    ],
+  },
 ] as const;
