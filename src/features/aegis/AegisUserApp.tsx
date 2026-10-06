@@ -516,7 +516,15 @@ function Home({
   );
 }
 
-function Tenders({ onOpen, chain }: { onOpen: (tender: Tender) => void; chain: ChainTenders }) {
+function Tenders({
+  onOpen,
+  onPublish,
+  chain,
+}: {
+  onOpen: (tender: Tender) => void;
+  onPublish: () => void;
+  chain: ChainTenders;
+}) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"All" | Tender["status"]>("Active");
   const tenders = chain.tenders.filter(
@@ -534,6 +542,12 @@ function Tenders({ onOpen, chain }: { onOpen: (tender: Tender) => void; chain: C
         Compare requirements and closing dates. Your offer is only shared when you choose to submit
         it.
       </p>
+      <div className="mt-4">
+        <Button onClick={onPublish}>
+          Publish a new tender
+          <ArrowRight />
+        </Button>
+      </div>
       <ChainPanel chain={chain} />
       <div className="mt-8 flex flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">
@@ -2104,7 +2118,9 @@ export function AegisUserApp() {
             onOpen={openTender}
           />
         )}
-        {page === "tenders" && <Tenders onOpen={openTender} chain={chain} />}
+        {page === "tenders" && (
+          <Tenders onOpen={openTender} onPublish={() => navigate("deploy")} chain={chain} />
+        )}
         {page === "bid" && (
           <BidPage
             wallet={wallet}
