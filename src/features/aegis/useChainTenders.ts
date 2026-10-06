@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   activityToTenders,
+  applyLiveCounts,
   fetchChainActivity,
   getChainConfig,
   isConfigured,
@@ -61,6 +62,47 @@ export function useChainTenders(): ChainTenders {
     void load(saved);
   }, [load]);
 
+  // Live activity for published addresses beyond the configured contract
+  // (including tenders imported via share links): real bid counts and
+  // settled detection per tender. Failures fall back to the stored policy
+  // with zero counts — the tender stays listed and biddable.
+  const [extraActivity, setExtraActivity] = useState<Record<string, ChainActivity>>({});
+  const { indexerUrl, contractAddress } = config;
+  const extraKey = published
+    .map((entry) => entry.address)
+    .filter((address) => address !== contractAddress)
+    .sort()
+    .join(",");
+  useEffect(() => {
+    const addresses = [...new Set(extraKey === "" ? [] : extraKey.split(","))];
+    if (addresses.length === 0 || !indexerUrl || !contractAddress) {
+      setExtraActivity({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const results = await Promise.all(
+        addresses.map(async (address) => {
+          try {
+            const item = await fetchChainActivity({ indexerUrl, contractAddress: address });
+            return [address, item] as const;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      if (cancelled) return;
+      const next: Record<string, ChainActivity> = {};
+      for (const result of results) {
+        if (result) next[result[0]] = result[1];
+      }
+      setExtraActivity(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [extraKey, indexerUrl, contractAddress]);
+
   // No demo fallback: when the indexer is unreachable the directory shows
   // only tenders published from this device (possibly none) instead of
   // fictional listings.
@@ -69,7 +111,11 @@ export function useChainTenders(): ChainTenders {
   // Newest first: device publishes (stored newest-first) ahead of chain
   // records, so home and directory always lead with the latest opportunity.
   const tenders: Tender[] = [
-    ...published.filter((entry) => !known.has(entry.address)).map(publishedToTender),
+    ...published
+      .filter((entry) => !known.has(entry.address))
+      .map((entry) =>
+        applyLiveCounts(publishedToTender(entry), extraActivity[entry.address] ?? null),
+      ),
     ...base,
   ];
 

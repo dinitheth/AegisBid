@@ -217,6 +217,50 @@ export function savePublishedTenders(items: PublishedTender[]): void {
   }
 }
 
+/**
+ * Parses a tender share link (`?contract=<64-hex>&issuer=&deadline=&mode=&reserve=`).
+ * Tender policy is public by design, so encoding it in the link is safe —
+ * it lets anyone who opens the link see the full honest tender (policy from
+ * the link, live counts from the indexer) without a backend registry.
+ * Returns null unless the address is a well-formed contract address.
+ */
+export function parseSharedTender(search: string): PublishedTender | null {
+  let query: URLSearchParams;
+  try {
+    query = new URLSearchParams(search);
+  } catch {
+    return null;
+  }
+  const address = (query.get("contract") ?? "").trim().toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(address)) return null;
+  const reserve = query.get("reserve") ?? "";
+  const deadline = query.get("deadline") ?? "";
+  return {
+    address,
+    issuer: (query.get("issuer") ?? "").slice(0, 120) || "Shared tender",
+    mode: query.get("mode") === "lowest" ? "lowest" : "highest",
+    reserve: /^\d+$/.test(reserve) ? reserve : "0",
+    deadline: deadline && !Number.isNaN(Date.parse(deadline)) ? deadline : "",
+    deployedAt: Date.now(),
+  };
+}
+
+/**
+ * Overlays live indexer activity onto a published tender record: real bid
+ * counts and settled detection. Falls back to the record untouched when
+ * there is no activity (indexer unreachable).
+ */
+export function applyLiveCounts(tender: Tender, activity: ChainActivity | null): Tender {
+  if (!activity) return tender;
+  const calls = activity.actions.filter((item) => !item.kind.toLowerCase().includes("deploy"));
+  const settled = activity.actions.some((item) => item.kind.toLowerCase().includes("settle"));
+  return {
+    ...tender,
+    commitments: calls.length,
+    status: settled ? "Settled" : tender.status,
+  };
+}
+
 /** Maps a locally published tender to the directory record shape. */
 export function publishedToTender(entry: PublishedTender): Tender {
   const closesAt = new Date(entry.deadline).getTime();

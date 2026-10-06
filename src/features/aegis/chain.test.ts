@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   FLAGSHIP_TENDER,
   activityToTenders,
+  applyLiveCounts,
   getChainConfig,
   isConfigured,
   loadPublishedTenders,
+  parseSharedTender,
   publishedToTender,
   type ChainActivity,
   type PublishedTender,
@@ -70,6 +72,35 @@ describe("published tenders", () => {
     expect(tender.status).toBe("Evaluating");
   });
 
+  it("overlays live counts and settled status", () => {
+    const tender = publishedToTender(entry);
+    const activity: ChainActivity = {
+      state: {
+        address: entry.address,
+        blockHeight: 10,
+        blockTimestamp: null,
+        transactionHash: "d0",
+        stateHex: null,
+      },
+      actions: [
+        { hash: "d0", kind: "Deploy", blockHeight: 9, timestamp: null },
+        { hash: "c1", kind: "Call", blockHeight: 10, timestamp: null },
+      ],
+    };
+    const live = applyLiveCounts(tender, activity);
+    expect(live.commitments).toBe(1);
+    expect(live.status).toBe("Active");
+    expect(applyLiveCounts(tender, null)).toEqual(tender);
+    const settled = applyLiveCounts(tender, {
+      ...activity,
+      actions: [
+        ...activity.actions,
+        { hash: "s1", kind: "Settle", blockHeight: 11, timestamp: null },
+      ],
+    });
+    expect(settled.status).toBe("Settled");
+  });
+
   it("ignores corrupt publish history", () => {
     const globals = globalThis as Record<string, unknown>;
     const prev = globals["window"];
@@ -82,5 +113,36 @@ describe("published tenders", () => {
       if (prev === undefined) delete globals["window"];
       else globals["window"] = prev;
     }
+  });
+});
+
+describe("shared tender links", () => {
+  const address = "131a7eba8ad55b204943564196b96f64c17e9bb2d2bf1a733a9119a9c266e4d8";
+
+  it("parses a full share link into a publish record", () => {
+    const params = new URLSearchParams({
+      contract: address,
+      issuer: "Neighborhood Bakery",
+      deadline: "2026-10-20T12:00:00.000Z",
+      mode: "lowest",
+      reserve: "2500",
+    });
+    const parsed = parseSharedTender(`?${params.toString()}`);
+    expect(parsed).toMatchObject({
+      address,
+      issuer: "Neighborhood Bakery",
+      mode: "lowest",
+      reserve: "2500",
+    });
+    expect(parsed?.deadline).toContain("2026-10-20");
+  });
+
+  it("rejects malformed addresses and sanitizes fields", () => {
+    expect(parseSharedTender("?contract=xyz")).toBeNull();
+    expect(parseSharedTender("")).toBeNull();
+    const parsed = parseSharedTender(`?contract=${address}&mode=bogus&reserve=abc&deadline=nope`);
+    expect(parsed?.mode).toBe("highest");
+    expect(parsed?.reserve).toBe("0");
+    expect(parsed?.issuer).toBe("Shared tender");
   });
 });

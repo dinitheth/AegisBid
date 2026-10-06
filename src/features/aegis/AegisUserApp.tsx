@@ -40,7 +40,13 @@ import {
   uiTenderToConfig,
 } from "./evaluator";
 import { formatConnectorDust, useMidnightWallet } from "./wallet";
-import { getChainConfig, isConfigured } from "./chain";
+import {
+  getChainConfig,
+  isConfigured,
+  loadPublishedTenders,
+  parseSharedTender,
+  savePublishedTenders,
+} from "./chain";
 import { Component, Suspense, lazy, type ReactNode } from "react";
 import { useChainTenders, type ChainTenders } from "./useChainTenders";
 import {
@@ -1950,6 +1956,17 @@ export function AegisUserApp() {
     window.localStorage.removeItem("aegis-theme");
     setBids(loadBids());
     setHydratedBids(true);
+    // Tender share links (?contract=<addr>&issuer=&deadline=&mode=&reserve=):
+    // import the public policy into this device's publish history so a shared
+    // tender lists, counts live bids, and stays biddable here. Idempotent.
+    const shared = parseSharedTender(window.location.search);
+    if (shared) {
+      const known = loadPublishedTenders();
+      if (!known.some((entry) => entry.address === shared.address)) {
+        savePublishedTenders([shared, ...known].slice(0, 20));
+      }
+      window.history.replaceState(null, "", window.location.pathname);
+    }
   }, []);
   useEffect(() => {
     if (hydratedBids) window.localStorage.setItem(BID_STORAGE_KEY, JSON.stringify(bids));

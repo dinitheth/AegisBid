@@ -37,6 +37,7 @@ export const generateNonce = () => {
 
 export const formatCountdown = (deadline: string) => {
   const delta = new Date(deadline).getTime() - Date.now();
+  if (!Number.isFinite(delta)) return "Date to be announced";
   if (delta <= 0) return "Closed";
   const hours = Math.floor(delta / 3_600_000);
   return `${Math.floor(hours / 24)}d ${hours % 24}h`;

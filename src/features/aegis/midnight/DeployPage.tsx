@@ -96,6 +96,36 @@ export function DeployPage() {
   const [failure, setFailure] = useState<string | null>(null);
   const [contractAddress, setContractAddress] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // Share links carry the public policy so anyone opening one sees the full
+  // tender (policy from the link, live counts from the indexer) — no
+  // backend registry needed for others to discover it.
+  const shareUrlFor = (entry: PublishedTender) => {
+    const params = new URLSearchParams({
+      contract: entry.address,
+      issuer: entry.issuer,
+      deadline: entry.deadline,
+      mode: entry.mode,
+      reserve: entry.reserve,
+    });
+    return `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+  };
+
+  const copyShareLink = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      const area = document.createElement("textarea");
+      area.value = url;
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand("copy");
+      area.remove();
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  };
 
   const [detectTick, setDetectTick] = useState(0);
   useEffect(() => {
@@ -387,22 +417,39 @@ export function DeployPage() {
             {failure}
           </p>
         )}
-        {contractAddress && (
-          <div className="mt-4 rounded-md border border-success/30 bg-card p-4">
-            <p className="text-xs text-card-foreground/60">Contract address</p>
-            <p className="mt-1 break-all font-mono text-sm text-card-foreground">
-              {contractAddress}
-            </p>
-            <a
-              className="mt-2 inline-block text-sm underline"
-              href={`https://explorer.1am.xyz/address/${contractAddress}?network=preprod`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              View on 1AM explorer
-            </a>
-          </div>
-        )}
+        {contractAddress &&
+          (() => {
+            const record = published.find((item) => item.address === contractAddress);
+            const url = record ? shareUrlFor(record) : null;
+            return (
+              <div className="mt-4 rounded-md border border-success/30 bg-card p-4">
+                <p className="text-xs text-card-foreground/60">Contract address</p>
+                <p className="mt-1 break-all font-mono text-sm text-card-foreground">
+                  {contractAddress}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <a
+                    className="text-sm underline"
+                    href={`https://explorer.1am.xyz/address/${contractAddress}?network=preprod`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    View on 1AM explorer
+                  </a>
+                  {url && (
+                    <Button size="sm" variant="outline" onClick={() => void copyShareLink(url)}>
+                      {copied ? "Link copied!" : "Copy share link"}
+                    </Button>
+                  )}
+                </div>
+                {url && (
+                  <p className="mt-2 text-xs text-card-foreground/60">
+                    Anyone opening the link sees this tender listed with live bid counts.
+                  </p>
+                )}
+              </div>
+            );
+          })()}
       </section>
 
       {published.length > 0 && (
@@ -427,7 +474,7 @@ export function DeployPage() {
                 <p className="mt-1 break-all font-mono text-xs text-card-foreground/60">
                   {item.address}
                 </p>
-                <div className="mt-2 flex flex-wrap gap-3 text-xs text-card-foreground/60">
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-card-foreground/60">
                   <span>Published {new Date(item.deployedAt).toLocaleString()}</span>
                   <a
                     className="underline"
@@ -437,6 +484,12 @@ export function DeployPage() {
                   >
                     View on explorer
                   </a>
+                  <button
+                    className="underline"
+                    onClick={() => void copyShareLink(shareUrlFor(item))}
+                  >
+                    {copied ? "Link copied!" : "Copy share link"}
+                  </button>
                 </div>
               </article>
             ))}
