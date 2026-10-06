@@ -17,6 +17,18 @@ describe("friendlyWalletError", () => {
     );
   });
 
+  it("points empty-wallet ledger failures at the faucet", () => {
+    expect(
+      friendlyWalletError(
+        new Error(
+          "Unexpected error executing scoped transaction '<unnamed>': Error: expected instance of e",
+        ),
+      ),
+    ).toBe(
+      "Your wallet couldn't prepare the transaction — this usually means it holds no funds. Get test tokens from the preprod faucet, then try again.",
+    );
+  });
+
   it("hides extension internals behind a generic message", () => {
     expect(
       friendlyWalletError(new Error("boom\n    at A (chrome-extension://abc/content.js:1:2)")),

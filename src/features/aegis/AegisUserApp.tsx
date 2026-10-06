@@ -544,6 +544,14 @@ function BidPage({
   const balance = Number(wallet.balanceRaw) / 1_000_000;
   const fee = 0.35;
   const enough = !wallet.connected || balance >= fee;
+  // Empty wallets die later with a cryptic ledger error — warn up front.
+  const noDust = (() => {
+    try {
+      return oneAm.info != null && BigInt(oneAm.info.dustBalance) === 0n;
+    } catch {
+      return false;
+    }
+  })();
   // The on-chain circuit refuses late bids (DEADLINE_ELAPSED) — check up
   // front so nobody pays for a transaction the contract will reject.
   const biddingClosed = new Date(tender.deadline).getTime() <= Date.now();
@@ -728,6 +736,12 @@ function BidPage({
             {!enough && (
               <p className="mt-2 text-sm text-destructive">
                 Your balance is too low to cover the network fee.
+              </p>
+            )}
+            {noDust && (
+              <p className="mt-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+                This wallet holds no DUST. Fund it from the preprod faucet first — empty wallets
+                fail when the transaction is built.
               </p>
             )}
           </div>
