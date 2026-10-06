@@ -819,7 +819,9 @@ function BidPage({
               </span>
             </div>
             <p className="text-sm text-card-foreground/70">
-              This amount stays private while bidding is open.
+              The price you offer, in the tender&apos;s credits. Credits are not a token and
+              need no balance — just type what you would charge. This amount stays private
+              while bidding is open.
             </p>
           </div>
           <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-md border border-border bg-muted/50 p-4">
