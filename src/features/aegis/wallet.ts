@@ -61,6 +61,30 @@ export function formatDust(raw: string | undefined) {
   return value.toLocaleString(undefined, { maximumFractionDigits: 6 });
 }
 
+/**
+ * Formats a raw DUST balance from the DApp connector (`getDustBalance`).
+ * Wallets report base units at 10^15 per DUST — verified against the
+ * wallets' own UIs (raw 25000000000000000000 ↔ 1AM showing 25,000.0;
+ * Lace's 8,296 / 25,000 tDUST faucet figures fit the same scale).
+ * Falls back to the grouped raw value when it isn't an integer string.
+ */
+const DUST_BASE_UNITS = 1_000_000_000_000_000n;
+
+export function formatConnectorDust(raw: string | undefined): string {
+  if (!raw) return "0";
+  try {
+    const value = BigInt(raw);
+    const whole = value / DUST_BASE_UNITS;
+    const frac = value % DUST_BASE_UNITS;
+    const grouped = whole.toLocaleString("en-US");
+    if (frac === 0n) return grouped;
+    const fracDigits = frac.toString().padStart(15, "0").replace(/0+$/, "").slice(0, 6);
+    return `${grouped}.${fracDigits}`;
+  } catch {
+    return raw;
+  }
+}
+
 export function useMidnightWallet() {
   const [available, setAvailable] = useState(false);
   const [connecting, setConnecting] = useState(false);

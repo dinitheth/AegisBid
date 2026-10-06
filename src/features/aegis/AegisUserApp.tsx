@@ -41,7 +41,7 @@ import {
   storedBidToWitness,
   uiTenderToConfig,
 } from "./evaluator";
-import { useMidnightWallet } from "./wallet";
+import { formatConnectorDust, useMidnightWallet } from "./wallet";
 import { getChainConfig, isConfigured } from "./chain";
 import { Component, Suspense, lazy, type ReactNode } from "react";
 import { useChainTenders, type ChainTenders } from "./useChainTenders";
@@ -987,7 +987,7 @@ function BalancePage({ wallet, onGoDeploy }: { wallet: WalletState; onGoDeploy: 
       <h1 className="mt-2 font-display text-4xl font-semibold text-foreground">Wallet balance</h1>
       <p className="mt-3 leading-7 text-muted-foreground">
         {oneAm.info
-          ? "Connected to your 1AM wallet. Balances are read directly from the wallet."
+          ? `Connected to your ${oneAm.info.walletName} wallet. Balances are read directly from the wallet.`
           : "Connected to the Lace Midnight wallet in this browser. Your balance is read directly from the wallet."}
       </p>
       <section className="mt-8 rounded-lg border border-border bg-card p-6 sm:p-8">
@@ -996,14 +996,15 @@ function BalancePage({ wallet, onGoDeploy }: { wallet: WalletState; onGoDeploy: 
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0">
                 <p className="text-xs text-card-foreground/60">
-                  DUST balance (1AM · {oneAm.info.networkId})
+                  DUST balance ({oneAm.info.walletName} · {oneAm.info.networkId})
                 </p>
                 <p className="mt-1 font-display text-4xl font-semibold text-card-foreground">
-                  {oneAm.info.dustBalance}
+                  {formatConnectorDust(oneAm.info.dustBalance)}{" "}
+                  <span className="text-lg text-card-foreground/60">tDUST</span>
                 </p>
               </div>
               <Button variant="ghost" onClick={oneAm.disconnect}>
-                Disconnect 1AM
+                Disconnect {oneAm.info.walletName}
               </Button>
             </div>
             <dl className="mt-6 space-y-4 border-t border-border pt-5 text-sm">
@@ -1516,8 +1517,8 @@ function SettlementPage({ bids, tenders }: { bids: SubmittedBid[]; tenders: Tend
       <p className="text-sm font-semibold text-primary">Evaluator flow</p>
       <h1 className="mt-2 font-display text-4xl font-semibold text-foreground">Settle a tender</h1>
       <p className="mt-3 max-w-2xl leading-7 text-muted-foreground">
-        Reconstruct the commitment set, open evaluation after closing, then prove the winner
-        with the same on-chain checks. Only the winning value is disclosed.
+        Reconstruct the commitment set, open evaluation after closing, then prove the winner with
+        the same on-chain checks. Only the winning value is disclosed.
       </p>
 
       <section className="mt-8 grid gap-4 rounded-lg border border-border bg-card p-6 sm:grid-cols-3">

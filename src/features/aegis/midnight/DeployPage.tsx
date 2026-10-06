@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { buildLaceProviders, buildOneAmProviders, toBindingTenderConfig } from "./providers";
+import { formatConnectorDust } from "../wallet";
 
 import {
   detectWalletConnectors,
@@ -292,7 +293,9 @@ export function DeployPage() {
             </div>
             <div>
               <dt className="text-xs text-card-foreground/60">DUST balance</dt>
-              <dd className="mt-1 font-semibold text-card-foreground">{info.dustBalance}</dd>
+              <dd className="mt-1 font-semibold text-card-foreground">
+                {formatConnectorDust(info.dustBalance)}
+              </dd>
             </div>
           </dl>
         ) : (
