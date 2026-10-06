@@ -29,7 +29,11 @@ export default defineConfig({
   // SSR build resolve node conditions, under which ledger-v8 and friends
   // export correctly. (The default cloudflare-module target resolves with
   // workerd conditions that those packages do not provide.)
-  nitro: { preset: "node-server" },
+  // On Vercel (VERCEL=1 is set by their build environment), use the vercel
+  // preset instead: it emits .vercel/output with Node.js serverless
+  // functions. Never use an edge/workerd preset — the ledger stack cannot
+  // run on those runtimes.
+  nitro: { preset: process.env["VERCEL"] ? "vercel" : "node-server" },
   vite: {
     plugins: [wasm()],
     resolve: {
