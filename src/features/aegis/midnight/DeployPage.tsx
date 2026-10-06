@@ -23,6 +23,7 @@ import { loadPublishedTenders, savePublishedTenders, type PublishedTender } from
 
 import {
   detectWalletConnectors,
+  friendlyWalletError,
   useOneAmWallet,
   type DetectedWallet,
   type OneAmInitialApi,
@@ -111,9 +112,7 @@ export function DeployPage() {
       });
       setStatus(null);
     } catch (cause) {
-      setFailure(
-        cause instanceof Error ? cause.message : `${entry.label} connection was declined.`,
-      );
+      setFailure(friendlyWalletError(cause));
     } finally {
       setBusy(false);
     }
@@ -192,13 +191,14 @@ export function DeployPage() {
       });
       setStatus(null);
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "Deployment failed.";
-      const stack =
-        cause instanceof Error && cause.stack ? cause.stack.split("\n").slice(0, 4).join("\n") : "";
-      const hint = /rate|429|limit/i.test(message)
-        ? " Public infra is throttling — wait a minute and retry."
+      // Full technical detail stays in the console; the screen gets one
+      // plain sentence.
+      console.error(`Deploy failed during ${step}:`, cause);
+      const friendly = friendlyWalletError(cause);
+      const hint = /rate|429|limit/i.test(String(cause))
+        ? " Public services are busy — wait a minute and retry."
         : "";
-      setFailure(`Failed during ${step}: ${message}.${hint}${stack ? `\n${stack}` : ""}`);
+      setFailure(`Could not publish. ${friendly}${hint}`);
     } finally {
       setBusy(false);
     }

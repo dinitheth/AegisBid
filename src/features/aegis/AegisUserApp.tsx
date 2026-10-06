@@ -46,6 +46,7 @@ import { useChainTenders, type ChainTenders } from "./useChainTenders";
 import {
   OneAmWalletProvider,
   detectWalletConnectors,
+  friendlyWalletError,
   useOneAmWallet,
 } from "./midnight/oneAmWallet";
 import { stringToBytes32 } from "./midnight/contract";
@@ -607,8 +608,7 @@ function BidPage({
           note: `Submitted on preprod · tx ${txHash.slice(0, 12)}…`,
         });
       } catch (cause) {
-        const reason =
-          cause instanceof Error ? cause.message : "The transaction was not completed.";
+        const reason = friendlyWalletError(cause);
         setFailure(reason);
         onSubmit({ ...base, receipt: commitment, onChain: false, accepted: false, note: reason });
       } finally {
@@ -650,7 +650,7 @@ function BidPage({
         note: onChain ? "Accepted by the network" : "Accepted and recorded locally",
       });
     } catch (cause) {
-      const reason = cause instanceof Error ? cause.message : "The transaction was not completed.";
+      const reason = friendlyWalletError(cause);
       setFailure(reason);
       onSubmit({ ...base, receipt: commitment, onChain: false, accepted: false, note: reason });
     } finally {

@@ -105,6 +105,24 @@ export function detectLace(): OneAmInitialApi | null {
   return detectWalletConnectors().find((entry) => entry.kind === "lace")?.initial ?? null;
 }
 
+/**
+ * Plain-language wallet errors for normal users. Extension stack traces and
+ * raw SDK text never reach the screen; callers can still `console.error` the
+ * original cause for debugging.
+ */
+export function friendlyWalletError(cause: unknown): string {
+  if (cause === null || cause === undefined) return "The transaction was not completed.";
+  const raw = cause instanceof Error ? cause.message : String(cause);
+  const firstLine = raw.split("\n")[0]?.trim() || "Something went wrong.";
+  if (/user rejected|rejected the request|declined|denied|cancelled/i.test(firstLine)) {
+    return "You declined the request in your wallet. Nothing was sent — try again whenever you're ready.";
+  }
+  const looksTechnical =
+    /chrome-extension|\(\S+\.js:\d+|\bat \w+ \(/i.test(raw) || firstLine.length > 220;
+  if (!looksTechnical) return firstLine;
+  return "The wallet request didn't complete. Please try again, and check the wallet extension if it keeps happening.";
+}
+
 function readFlag(): boolean {
   try {
     return typeof window !== "undefined" && window.localStorage.getItem(CONNECT_FLAG) === "1";
