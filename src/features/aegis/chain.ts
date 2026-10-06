@@ -11,8 +11,8 @@ export type ChainConfig = { indexerUrl: string; contractAddress: string };
 
 const STORAGE_KEY = "aegis-chain-config";
 
-const envIndexer = (import.meta.env['VITE_MIDNIGHT_INDEXER_URL'] as string | undefined) ?? "";
-const envContract = (import.meta.env['VITE_AEGISBID_CONTRACT'] as string | undefined) ?? "";
+const envIndexer = (import.meta.env["VITE_MIDNIGHT_INDEXER_URL"] as string | undefined) ?? "";
+const envContract = (import.meta.env["VITE_AEGISBID_CONTRACT"] as string | undefined) ?? "";
 
 /**
  * Flagship deployment: the verified preprod tender. Values below are the
@@ -46,7 +46,10 @@ export function getChainConfig(): ChainConfig {
     }
   }
   if (envIndexer && envContract) return { indexerUrl: envIndexer, contractAddress: envContract };
-  return { indexerUrl: FLAGSHIP_TENDER.indexerUrl, contractAddress: FLAGSHIP_TENDER.contractAddress };
+  return {
+    indexerUrl: FLAGSHIP_TENDER.indexerUrl,
+    contractAddress: FLAGSHIP_TENDER.contractAddress,
+  };
 }
 
 export function saveChainConfig(config: ChainConfig) {
@@ -113,7 +116,8 @@ async function callIndexer<T>(config: ChainConfig, query: string): Promise<T> {
     throw new Error(`Indexer request failed [${response.status}]: ${await response.text()}`);
   }
   const payload = (await response.json()) as { errors?: { message: string }[]; data?: T };
-  if (payload.errors?.length) throw new Error(payload.errors.map((item) => item.message).join("; "));
+  if (payload.errors?.length)
+    throw new Error(payload.errors.map((item) => item.message).join("; "));
   if (!payload.data) throw new Error("The indexer returned no data for this contract.");
   return payload.data;
 }
@@ -125,7 +129,9 @@ type ActionNode = {
   transaction?: { hash?: string; block?: { height?: number; timestamp?: string } };
 };
 
-export async function fetchContractState(config: ChainConfig = getChainConfig()): Promise<ChainContractState> {
+export async function fetchContractState(
+  config: ChainConfig = getChainConfig(),
+): Promise<ChainContractState> {
   if (!isConfigured(config)) throw new Error("Midnight indexer is not configured.");
   const data = await callIndexer<{ contractAction?: ActionNode }>(config, STATE_QUERY);
   const action = data.contractAction;
@@ -139,7 +145,9 @@ export async function fetchContractState(config: ChainConfig = getChainConfig())
   };
 }
 
-export async function fetchChainActivity(config: ChainConfig = getChainConfig()): Promise<ChainActivity> {
+export async function fetchChainActivity(
+  config: ChainConfig = getChainConfig(),
+): Promise<ChainActivity> {
   const state = await fetchContractState(config);
   let actions: ChainActivity["actions"] = [];
   try {
@@ -154,10 +162,81 @@ export async function fetchChainActivity(config: ChainConfig = getChainConfig())
   } catch {
     // Some indexers expose only the latest action; fall back to that single entry.
     actions = state.transactionHash
-      ? [{ hash: state.transactionHash, kind: "ContractAction", blockHeight: state.blockHeight, timestamp: state.blockTimestamp }]
+      ? [
+          {
+            hash: state.transactionHash,
+            kind: "ContractAction",
+            blockHeight: state.blockHeight,
+            timestamp: state.blockTimestamp,
+          },
+        ]
       : [];
   }
   return { state, actions };
+}
+
+/**
+ * Tenders published from the Live deploy page. The directory only queries
+ * one configured contract, so these local records are merged in separately
+ * (see `publishedToTender`). Stored under `aegis-published-tenders`.
+ */
+export type PublishedTender = {
+  address: string;
+  issuer: string;
+  mode: "highest" | "lowest";
+  reserve: string;
+  deadline: string;
+  deployedAt: number;
+};
+
+const PUBLISHED_KEY = "aegis-published-tenders";
+
+export function loadPublishedTenders(): PublishedTender[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(PUBLISHED_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (entry): entry is PublishedTender =>
+        typeof entry === "object" &&
+        entry !== null &&
+        typeof (entry as Record<string, unknown>)["address"] === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function savePublishedTenders(items: PublishedTender[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PUBLISHED_KEY, JSON.stringify(items));
+  } catch {
+    /* private mode etc. */
+  }
+}
+
+/** Maps a locally published tender to the directory record shape. */
+export function publishedToTender(entry: PublishedTender): Tender {
+  const closesAt = new Date(entry.deadline).getTime();
+  const reserve = Number(entry.reserve === "" ? "0" : entry.reserve);
+  const reserveLabel = Number.isFinite(reserve) ? reserve.toLocaleString("en-US") : entry.reserve;
+  return {
+    id: entry.address,
+    title: entry.issuer || "Published tender",
+    issuer: entry.issuer || "Unknown issuer",
+    deadline: entry.deadline,
+    threshold:
+      entry.mode === "lowest"
+        ? `Ceiling ${reserveLabel} credits`
+        : `Reserve ${reserveLabel} credits`,
+    commitments: 0,
+    status: Number.isNaN(closesAt) || closesAt > Date.now() ? "Active" : "Evaluating",
+    mode: entry.mode === "lowest" ? "Lowest compliant" : "Highest bid",
+    specification: "Published from this device; bid counts update after the first offer.",
+    contractAddress: entry.address,
+  };
 }
 
 /** Turns raw indexer activity into the tender records the explorer renders. */
@@ -191,7 +270,9 @@ export function activityToTenders(activity: ChainActivity): Tender[] {
       title: "On-chain tender",
       issuer: "Midnight contract",
       deadline: new Date((deployedAt?.getTime() ?? Date.now()) + 7 * 86_400_000).toISOString(),
-      threshold: activity.state.blockHeight ? `Last update at block ${activity.state.blockHeight}` : "Live contract state",
+      threshold: activity.state.blockHeight
+        ? `Last update at block ${activity.state.blockHeight}`
+        : "Live contract state",
       commitments: calls.length,
       status: settled ? "Settled" : "Active",
       mode: "Lowest compliant",

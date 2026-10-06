@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { buildLaceProviders, buildOneAmProviders, toBindingTenderConfig } from "./providers";
 import { formatConnectorDust } from "../wallet";
+import { loadPublishedTenders, savePublishedTenders, type PublishedTender } from "../chain";
 
 import {
   detectWalletConnectors,
@@ -34,38 +35,10 @@ function defaultDeadlineInput() {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-type PublishedTender = {
-  address: string;
-  issuer: string;
-  mode: "highest" | "lowest";
-  reserve: string;
-  deadline: string;
-  deployedAt: number;
-};
-
-const PUBLISHED_KEY = "aegis-published-tenders";
-
-function loadPublished(): PublishedTender[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(PUBLISHED_KEY);
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (entry): entry is PublishedTender =>
-        typeof entry === "object" &&
-        entry !== null &&
-        typeof (entry as Record<string, unknown>)["address"] === "string",
-    );
-  } catch {
-    return [];
-  }
-}
-
 export function DeployPage() {
   const [wallets, setWallets] = useState<DetectedWallet[]>([]);
   const { api, info, setConnected } = useOneAmWallet();
-  const [published, setPublished] = useState<PublishedTender[]>(() => loadPublished());
+  const [published, setPublished] = useState<PublishedTender[]>(() => loadPublishedTenders());
   const [issuer, setIssuer] = useState("AegisBid Wave 1 demo issuer");
   const [deadline, setDeadline] = useState(defaultDeadlineInput);
   const [reserve, setReserve] = useState("1000");
@@ -214,11 +187,7 @@ export function DeployPage() {
           deployedAt: Date.now(),
         };
         const next = [record, ...items.filter((item) => item.address !== address)].slice(0, 20);
-        try {
-          window.localStorage.setItem(PUBLISHED_KEY, JSON.stringify(next));
-        } catch {
-          /* private mode etc. */
-        }
+        savePublishedTenders(next);
         return next;
       });
       setStatus(null);
@@ -323,8 +292,8 @@ export function DeployPage() {
               onChange={(e) => setReserve(e.target.value.replace(/\D/g, ""))}
             />
             <p className="text-xs leading-5 text-card-foreground/60">
-              Lowest offer you will accept, in the tender&apos;s own credits — the same unit
-              bidders type as their offer amount. Not tDUST: tDUST only pays network fees.
+              Lowest offer you will accept, in the tender&apos;s own credits — the same unit bidders
+              type as their offer amount. Not tDUST: tDUST only pays network fees.
             </p>
           </div>
           <div className="space-y-1.5">

@@ -4,7 +4,10 @@ import {
   activityToTenders,
   getChainConfig,
   isConfigured,
+  loadPublishedTenders,
+  publishedToTender,
   type ChainActivity,
+  type PublishedTender,
 } from "./chain";
 
 describe("chain flagship", () => {
@@ -35,5 +38,48 @@ describe("chain flagship", () => {
     expect(tender?.commitments).toBe(2);
     expect(tender?.status).toBe("Active");
     expect(tender?.contractAddress).toBe(FLAGSHIP_TENDER.contractAddress);
+  });
+});
+
+describe("published tenders", () => {
+  const entry: PublishedTender = {
+    address: "131a7eba8ad55b204943564196b96f64c17e9bb2d2bf1a733a9119a9c266e4d8",
+    issuer: "Neighborhood Bakery",
+    mode: "highest",
+    reserve: "1000",
+    deadline: new Date(Date.now() + 86_400_000).toISOString(),
+    deployedAt: Date.now(),
+  };
+
+  it("maps a published tender to a biddable directory record", () => {
+    const tender = publishedToTender(entry);
+    expect(tender.id).toBe(entry.address);
+    expect(tender.contractAddress).toBe(entry.address);
+    expect(tender.title).toBe("Neighborhood Bakery");
+    expect(tender.status).toBe("Active");
+    expect(tender.mode).toBe("Highest bid");
+    expect(tender.threshold).toContain("1,000");
+  });
+
+  it("marks past-deadline publishes as ready for evaluation", () => {
+    const tender = publishedToTender({
+      ...entry,
+      deadline: new Date(Date.now() - 1000).toISOString(),
+    });
+    expect(tender.status).toBe("Evaluating");
+  });
+
+  it("ignores corrupt publish history", () => {
+    const globals = globalThis as Record<string, unknown>;
+    const prev = globals["window"];
+    globals["window"] = {
+      localStorage: { getItem: () => "{not json" },
+    };
+    try {
+      expect(loadPublishedTenders()).toEqual([]);
+    } finally {
+      if (prev === undefined) delete globals["window"];
+      else globals["window"] = prev;
+    }
   });
 });

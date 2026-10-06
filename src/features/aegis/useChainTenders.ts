@@ -4,6 +4,8 @@ import {
   fetchChainActivity,
   getChainConfig,
   isConfigured,
+  loadPublishedTenders,
+  publishedToTender,
   saveChainConfig,
   clearChainConfig,
   type ChainActivity,
@@ -29,6 +31,9 @@ export function useChainTenders(): ChainTenders {
   const [activity, setActivity] = useState<ChainActivity | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Tenders published from this device live under other contract addresses
+  // the directory never queries — merge them in so they are biddable.
+  const [published, setPublished] = useState(loadPublishedTenders);
 
   const load = useCallback(async (next: ChainConfig) => {
     if (!isConfigured(next)) {
@@ -54,6 +59,13 @@ export function useChainTenders(): ChainTenders {
     void load(saved);
   }, [load]);
 
+  const base = activity ? activityToTenders(activity) : initialTenders;
+  const known = new Set(base.map((tender) => tender.contractAddress ?? tender.id));
+  const tenders: Tender[] = [
+    ...base,
+    ...published.filter((entry) => !known.has(entry.address)).map(publishedToTender),
+  ];
+
   return {
     config,
     connected: isConfigured(config),
@@ -61,10 +73,16 @@ export function useChainTenders(): ChainTenders {
     loading,
     error,
     activity,
-    tenders: activity ? activityToTenders(activity) : initialTenders,
-    refresh: () => load(config),
+    tenders,
+    refresh: () => {
+      setPublished(loadPublishedTenders());
+      return load(config);
+    },
     save: async (next) => {
-      const trimmed = { indexerUrl: next.indexerUrl.trim(), contractAddress: next.contractAddress.trim() };
+      const trimmed = {
+        indexerUrl: next.indexerUrl.trim(),
+        contractAddress: next.contractAddress.trim(),
+      };
       setConfig(trimmed);
       saveChainConfig(trimmed);
       await load(trimmed);
