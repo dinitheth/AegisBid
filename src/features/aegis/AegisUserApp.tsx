@@ -1352,29 +1352,6 @@ function SettlementPage({ bids, tenders }: { bids: SubmittedBid[]; tenders: Tend
     resetEngine();
   };
 
-  const loadDemo = () => {
-    const stamp = Date.now() % 100000;
-    let demo: BidWitness[];
-    if (config.mode === "highest") {
-      const base = config.reserve > 10000n ? config.reserve : 1000n;
-      demo = [
-        { amount: base + 200n, salt: generateNonce(), bidderKey: `demo-a:${stamp}` },
-        { amount: base + 450n, salt: generateNonce(), bidderKey: `demo-b:${stamp}` },
-        { amount: base + 100n, salt: generateNonce(), bidderKey: `demo-c:${stamp}` },
-      ];
-    } else {
-      const base = config.reserve > 10000n ? config.reserve : 4200n;
-      demo = [
-        { amount: base - 100n, salt: generateNonce(), bidderKey: `demo-a:${stamp}` },
-        { amount: base - 500n, salt: generateNonce(), bidderKey: `demo-b:${stamp}` },
-        { amount: base + 200n, salt: generateNonce(), bidderKey: `demo-c:${stamp}` },
-      ];
-    }
-    setManual(demo);
-    setWinningIndex(1);
-    resetEngine();
-  };
-
   const startEvaluation = () => {
     setFailure(null);
     try {
@@ -1500,9 +1477,6 @@ function SettlementPage({ bids, tenders }: { bids: SubmittedBid[]; tenders: Tend
             Bid witnesses ({witnesses.length})
           </h2>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={loadDemo}>
-              Load 3 demo offers
-            </Button>
             {suggestedIndex !== null && (
               <Button size="sm" variant="ghost" onClick={() => setWinningIndex(suggestedIndex)}>
                 Select optimal
@@ -1516,8 +1490,7 @@ function SettlementPage({ bids, tenders }: { bids: SubmittedBid[]; tenders: Tend
         </p>
         {witnesses.length === 0 ? (
           <div className="mt-4 rounded-md border border-dashed border-border p-6 text-center text-sm text-card-foreground/70">
-            No witnesses for this tender yet. Submit a bid first, add one manually, or load demo
-            offers.
+            No witnesses for this tender yet. Submit a bid first, or add one manually.
           </div>
         ) : (
           <div className="mt-4 overflow-x-auto rounded-md border border-border">
