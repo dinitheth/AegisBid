@@ -32,8 +32,10 @@ export function useChainTenders(): ChainTenders {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Tenders published from this device live under other contract addresses
-  // the directory never queries — merge them in so they are biddable.
-  const [published, setPublished] = useState(loadPublishedTenders);
+  // the directory never queries — merge them in so they are biddable. Read
+  // fresh every render (tiny sync parse): publishing happens on another page
+  // without remounting this hook, so a mount-time snapshot would go stale.
+  const published = loadPublishedTenders();
 
   const load = useCallback(async (next: ChainConfig) => {
     if (!isConfigured(next)) {
@@ -74,10 +76,7 @@ export function useChainTenders(): ChainTenders {
     error,
     activity,
     tenders,
-    refresh: () => {
-      setPublished(loadPublishedTenders());
-      return load(config);
-    },
+    refresh: () => load(config),
     save: async (next) => {
       const trimmed = {
         indexerUrl: next.indexerUrl.trim(),

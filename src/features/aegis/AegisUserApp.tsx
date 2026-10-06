@@ -194,88 +194,6 @@ function WalletButton({ wallet, onMissing }: { wallet: WalletState; onMissing: (
   );
 }
 
-function ChainPanel({ chain }: { chain: ChainTenders }) {
-  const [open, setOpen] = useState(false);
-  const [indexer, setIndexer] = useState("");
-  const [address, setAddress] = useState("");
-  useEffect(() => {
-    setIndexer(chain.config.indexerUrl);
-    setAddress(chain.config.contractAddress);
-  }, [chain.config.indexerUrl, chain.config.contractAddress]);
-  const state = chain.activity?.state;
-  return (
-    <div className="mt-6 rounded-lg border border-border bg-section p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0 text-sm">
-          {chain.live && state ? (
-            <p className="text-foreground">
-              <span className="font-semibold text-success">Live network data</span> · contract{" "}
-              {shortAddress(state.address)}
-              {state.blockHeight ? ` · block ${state.blockHeight}` : ""} ·{" "}
-              {chain.activity?.actions.length ?? 0} recorded transactions
-            </p>
-          ) : chain.loading ? (
-            <p className="text-muted-foreground">Reading the network...</p>
-          ) : chain.error ? (
-            <p className="text-destructive">Network unavailable: {chain.error}</p>
-          ) : (
-            <p className="text-muted-foreground">
-              Showing example tenders. Add a network address and a contract address to read real
-              tenders, bids and results.
-            </p>
-          )}
-        </div>
-        <div className="flex gap-2">
-          {chain.live && (
-            <Button size="sm" variant="ghost" onClick={() => void chain.refresh()}>
-              <RefreshCw className="size-3.5" />
-              Refresh
-            </Button>
-          )}
-          <Button size="sm" variant="outline" onClick={() => setOpen((value) => !value)}>
-            {open ? "Close" : "Network settings"}
-          </Button>
-        </div>
-      </div>
-      {open && (
-        <div className="mt-4 grid gap-3 border-t border-border pt-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="indexer-url">Network address</Label>
-            <Input
-              id="indexer-url"
-              value={indexer}
-              onChange={(event) => setIndexer(event.target.value)}
-              placeholder="https://indexer.testnet.midnight.network/api/v1/graphql"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="contract-address">Contract address</Label>
-            <Input
-              id="contract-address"
-              value={address}
-              onChange={(event) => setAddress(event.target.value)}
-              placeholder="0200...."
-              className="font-mono text-xs"
-            />
-          </div>
-          <div className="flex gap-2 sm:col-span-2">
-            <Button
-              size="sm"
-              disabled={!indexer || !address || chain.loading}
-              onClick={() => void chain.save({ indexerUrl: indexer, contractAddress: address })}
-            >
-              {chain.loading ? "Connecting..." : "Use live data"}
-            </Button>
-            <Button size="sm" variant="ghost" onClick={chain.reset}>
-              Reset
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 const navItems: { id: Page; label: string }[] = [
   { id: "tenders", label: "Open tenders" },
   { id: "bids", label: "Bid history" },
@@ -554,7 +472,6 @@ function Tenders({
           <ArrowRight />
         </Button>
       </div>
-      <ChainPanel chain={chain} />
       <div className="mt-8 flex flex-col gap-3 sm:flex-row">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -825,9 +742,9 @@ function BidPage({
               </span>
             </div>
             <p className="text-sm text-card-foreground/70">
-              The price you offer, in the tender&apos;s credits. Credits are not a token and
-              need no balance — just type what you would charge. This amount stays private
-              while bidding is open.
+              The price you offer, in the tender&apos;s credits. Credits are not a token and need no
+              balance — just type what you would charge. This amount stays private while bidding is
+              open.
             </p>
           </div>
           <label className="mt-6 flex cursor-pointer items-start gap-3 rounded-md border border-border bg-muted/50 p-4">
