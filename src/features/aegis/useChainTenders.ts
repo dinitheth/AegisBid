@@ -63,9 +63,11 @@ export function useChainTenders(): ChainTenders {
 
   const base = activity ? activityToTenders(activity) : initialTenders;
   const known = new Set(base.map((tender) => tender.contractAddress ?? tender.id));
+  // Newest first: device publishes (stored newest-first) ahead of chain
+  // records, so home and directory always lead with the latest opportunity.
   const tenders: Tender[] = [
-    ...base,
     ...published.filter((entry) => !known.has(entry.address)).map(publishedToTender),
+    ...base,
   ];
 
   return {

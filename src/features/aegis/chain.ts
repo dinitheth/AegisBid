@@ -246,7 +246,10 @@ export function activityToTenders(activity: ChainActivity): Tender[] {
   const settled = activity.actions.some((item) => item.kind.toLowerCase().includes("settle"));
   if (activity.state.address === FLAGSHIP_TENDER.contractAddress) {
     // Verified on-chain parameters of the flagship deployment (see
-    // FLAGSHIP_TENDER); only counts and status are read live.
+    // FLAGSHIP_TENDER); only counts and status are read live. A past
+    // deadline means bidding is over even though the on-chain phase is
+    // still Open — showing "Open for bids" would invite rejected bids.
+    const deadlinePassed = new Date(FLAGSHIP_TENDER.deadline).getTime() <= Date.now();
     return [
       {
         id: `${activity.state.address.slice(0, 10)}...${activity.state.address.slice(-6)}`,
@@ -255,7 +258,7 @@ export function activityToTenders(activity: ChainActivity): Tender[] {
         deadline: FLAGSHIP_TENDER.deadline,
         threshold: FLAGSHIP_TENDER.threshold,
         commitments: calls.length,
-        status: settled ? "Settled" : "Active",
+        status: settled ? "Settled" : deadlinePassed ? "Evaluating" : "Active",
         mode: FLAGSHIP_TENDER.mode,
         specification: `${FLAGSHIP_TENDER.specification} Live bid count below.`,
         contractAddress: activity.state.address,

@@ -36,7 +36,8 @@ describe("chain flagship", () => {
     expect(tender?.title).toBe(FLAGSHIP_TENDER.title);
     expect(tender?.mode).toBe("Highest bid");
     expect(tender?.commitments).toBe(2);
-    expect(tender?.status).toBe("Active");
+    // Flagship deadline (Sep 2026) has passed: no longer open for bids.
+    expect(tender?.status).toBe("Evaluating");
     expect(tender?.contractAddress).toBe(FLAGSHIP_TENDER.contractAddress);
   });
 });
