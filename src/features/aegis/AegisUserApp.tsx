@@ -1532,7 +1532,7 @@ function SettlementPage({ bids, tenders }: { bids: SubmittedBid[]; tenders: Tend
           >
             {tenders.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.title} · {item.id}
+                {item.title} · {item.id.slice(0, 8)}
               </option>
             ))}
           </select>
