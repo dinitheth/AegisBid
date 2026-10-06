@@ -5,6 +5,7 @@ import {
   ZK_BASE,
   buildLaceProviders,
   bytesToHex,
+  createMemoryPrivateStateProvider,
   toBindingTenderConfig,
   type AnyWitnessContext,
 } from "./providers";
@@ -140,5 +141,27 @@ describe("midnight providers", () => {
     );
     expect(built.provingVia).toBe("proof-server");
     expect(built.providers).toBeDefined();
+  });
+
+  it("scopes private states per contract address", async () => {
+    const store = createMemoryPrivateStateProvider();
+    store.setContractAddress("addr-a");
+    await store.set("bid", { amount: 1 });
+    await store.setSigningKey("addr-a", "key-a");
+    store.setContractAddress("addr-b");
+    expect(await store.get("bid")).toBeNull();
+    await store.set("bid", { amount: 2 });
+    expect(await store.get("bid")).toEqual({ amount: 2 });
+    // Signing keys are global (address-keyed), not scope-keyed.
+    expect(await store.getSigningKey("addr-a")).toBe("key-a");
+    expect(await store.getSigningKey("addr-b")).toBeNull();
+    await store.remove("bid");
+    expect(await store.get("bid")).toBeNull();
+  });
+
+  it("includes a privateStateProvider in the Lace stack", async () => {
+    const built = await withBrowserWindow(() => buildLaceProviders(mockConnectorApi("wallet")));
+    const providers = built.providers as unknown as Record<string, unknown>;
+    expect(typeof providers["privateStateProvider"]).toBe("object");
   });
 });

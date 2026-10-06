@@ -82,12 +82,58 @@ export const PROOF_SERVER_URL =
   (import.meta.env["VITE_PROOF_SERVER_URL"] as string | undefined) ||
   "http://127.0.0.1:6300";
 
+/**
+ * In-memory private-state provider. `deployContract`/`submitCallTx` require
+ * one (they call `setContractAddress` first — omitting it crashes with
+ * "Cannot read properties of undefined"). Ephemeral by design: it only
+ * scopes a single deploy/call session. Maintenance-authority keys stored via
+ * `setSigningKey` do NOT survive reloads — acceptable for the demo flow
+ * (deploy + bid); a persistent level-backed provider can replace this later.
+ */
+export function createMemoryPrivateStateProvider() {
+  let scope = "";
+  const states = new Map<string, unknown>();
+  const signingKeys = new Map<string, unknown>();
+  const scoped = (id: unknown) => `${scope}::${String(id)}`;
+  return {
+    setContractAddress(address: string) {
+      scope = String(address);
+    },
+    async set(privateStateId: unknown, state: unknown) {
+      states.set(scoped(privateStateId), state);
+    },
+    async get(privateStateId: unknown) {
+      return states.has(scoped(privateStateId)) ? states.get(scoped(privateStateId)) : null;
+    },
+    async remove(privateStateId: unknown) {
+      states.delete(scoped(privateStateId));
+    },
+    async clear() {
+      states.clear();
+    },
+    async setSigningKey(address: unknown, signingKey: unknown) {
+      signingKeys.set(String(address), signingKey);
+    },
+    async getSigningKey(address: unknown) {
+      const key = String(address);
+      return signingKeys.has(key) ? signingKeys.get(key) : null;
+    },
+    async removeSigningKey(address: unknown) {
+      signingKeys.delete(String(address));
+    },
+    async clearSigningKeys() {
+      signingKeys.clear();
+    },
+  };
+}
+
 async function buildConnectorBase(api: OneAmConnectedApi, bid?: PrivateBidWitnesses) {
   const config = await api.getConfiguration();
   setNetworkId(config.networkId || "preprod");
 
   const zkConfigProvider = new FetchZkConfigProvider(ZK_BASE, fetch.bind(window));
   const publicDataProvider = indexerPublicDataProvider(config.indexerUri, config.indexerWsUri);
+  const privateStateProvider = createMemoryPrivateStateProvider();
 
   const keys = await api.getShieldedAddresses();
   const walletProvider = {
@@ -131,6 +177,7 @@ async function buildConnectorBase(api: OneAmConnectedApi, bid?: PrivateBidWitnes
     config,
     zkConfigProvider,
     publicDataProvider,
+    privateStateProvider,
     walletProvider,
     midnightProvider,
     compiled,
@@ -172,8 +219,14 @@ export async function buildOneAmProviders(
   api: OneAmConnectedApi,
   bid?: PrivateBidWitnesses,
 ): Promise<AegisProviders> {
-  const { zkConfigProvider, publicDataProvider, walletProvider, midnightProvider, compiled } =
-    await buildConnectorBase(api, bid);
+  const {
+    zkConfigProvider,
+    publicDataProvider,
+    privateStateProvider,
+    walletProvider,
+    midnightProvider,
+    compiled,
+  } = await buildConnectorBase(api, bid);
 
   const provingProvider = await api.getProvingProvider(zkConfigProvider);
   const proofProvider = makeWalletProofProvider(provingProvider);
@@ -181,6 +234,7 @@ export async function buildOneAmProviders(
     providers: {
       publicDataProvider,
       zkConfigProvider,
+      privateStateProvider,
       proofProvider,
       walletProvider,
       midnightProvider,
@@ -203,8 +257,14 @@ export async function buildLaceProviders(
   bid?: PrivateBidWitnesses,
   opts?: { proofServerUrl?: string },
 ): Promise<AegisProviders> {
-  const { zkConfigProvider, publicDataProvider, walletProvider, midnightProvider, compiled } =
-    await buildConnectorBase(api, bid);
+  const {
+    zkConfigProvider,
+    publicDataProvider,
+    privateStateProvider,
+    walletProvider,
+    midnightProvider,
+    compiled,
+  } = await buildConnectorBase(api, bid);
 
   let provingVia: ProvingVia = "wallet";
   // Loose on purpose: the assembled providers object is cast for
@@ -227,6 +287,7 @@ export async function buildLaceProviders(
     providers: {
       publicDataProvider,
       zkConfigProvider,
+      privateStateProvider,
       proofProvider,
       walletProvider,
       midnightProvider,
