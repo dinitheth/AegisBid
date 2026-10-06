@@ -14,6 +14,7 @@
  */
 import { sha256Hex } from "../hash";
 import type { BidWitness, TenderConfig } from "../tenderEngine";
+import { readEnv } from "./env";
 import { getActiveNetwork, type MidnightNetworkId } from "./networks";
 
 export const CONTRACT_CIRCUITS = ["submitBid", "beginEvaluation", "settle"] as const;
@@ -24,14 +25,7 @@ export type DeploymentStatus =
   | { deployed: true; network: MidnightNetworkId; contractAddress: string };
 
 function contractAddressFromEnv(): string | undefined {
-  try {
-    const value = (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.[
-      "VITE_AEGISBID_CONTRACT"
-    ];
-    return value && value.length > 0 ? value : undefined;
-  } catch {
-    return undefined;
-  }
+  return readEnv("VITE_AEGISBID_CONTRACT");
 }
 
 export function getDeploymentStatus(): DeploymentStatus {
@@ -124,10 +118,7 @@ export type PrivateBidState = {
  */
 export function buildSubmitBidWitnesses(state: PrivateBidState) {
   return {
-    localBidAmount: ({ privateState }: { privateState: unknown }) => [
-      privateState,
-      state.amount,
-    ],
+    localBidAmount: ({ privateState }: { privateState: unknown }) => [privateState, state.amount],
     localBidSalt: ({ privateState }: { privateState: unknown }) => [privateState, state.salt],
     localIdentitySecret: ({ privateState }: { privateState: unknown }) => [
       privateState,

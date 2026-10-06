@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { clearEnvOverrides, overrideEnv } from "./env";
 import {
   buildSettlementWitnesses,
   buildSubmitBidWitnesses,
@@ -12,6 +13,15 @@ import {
 } from "./contract";
 
 describe("midnight contract wiring", () => {
+  // The repo .env sets a contract address; this test needs a blank env.
+  beforeEach(() => {
+    overrideEnv({ VITE_AEGISBID_CONTRACT: "" });
+  });
+
+  afterEach(() => {
+    clearEnvOverrides();
+  });
+
   it("reports NOT DEPLOYED until an address is configured", () => {
     const status = getDeploymentStatus();
     expect(status.deployed).toBe(false);

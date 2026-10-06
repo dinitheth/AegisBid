@@ -61,16 +61,7 @@ export function isNetworkId(value: unknown): value is MidnightNetworkId {
   );
 }
 
-function env(name: string): string | undefined {
-  try {
-    const value = (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.[
-      name
-    ];
-    return value && value.length > 0 ? value : undefined;
-  } catch {
-    return undefined;
-  }
-}
+import { readEnv as env } from "./env";
 
 /** Active network. Defaults to `undeployed` (local, nothing at risk). */
 export function getActiveNetworkId(): MidnightNetworkId {

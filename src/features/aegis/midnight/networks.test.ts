@@ -1,10 +1,17 @@
-import { describe, expect, it } from "vitest";
-import {
-  MIDNIGHT_NETWORKS,
-  getActiveNetwork,
-  getActiveNetworkId,
-  isNetworkId,
-} from "./networks";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { clearEnvOverrides, overrideEnv } from "./env";
+import { MIDNIGHT_NETWORKS, getActiveNetwork, getActiveNetworkId, isNetworkId } from "./networks";
+
+// The repo .env sets preprod values; these default-path tests force a blank
+// environment instead (vi.stubEnv can't cross into the modules under test:
+// each transformed module gets its own import.meta.env object).
+beforeEach(() => {
+  overrideEnv({ VITE_MIDNIGHT_NETWORK_ID: "", VITE_MIDNIGHT_PROOF_SERVER: "" });
+});
+
+afterEach(() => {
+  clearEnvOverrides();
+});
 
 describe("midnight networks", () => {
   it("pins the documented v4 endpoints with a local proof server", () => {
