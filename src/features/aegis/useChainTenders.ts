@@ -5,12 +5,15 @@ import {
   fetchChainActivity,
   getChainConfig,
   isConfigured,
+  isValidPublishedTender,
   loadPublishedTenders,
+  mergePublishedSources,
   publishedToTender,
   saveChainConfig,
   clearChainConfig,
   type ChainActivity,
   type ChainConfig,
+  type PublishedTender,
 } from "./chain";
 import { type Tender } from "./protocol";
 
@@ -37,6 +40,29 @@ export function useChainTenders(): ChainTenders {
   // fresh every render (tiny sync parse): publishing happens on another page
   // without remounting this hook, so a mount-time snapshot would go stale.
   const published = loadPublishedTenders();
+
+  // Shared registry: what everyone else published (same shape, newest
+  // first). Unavailable without backend config — the directory then shows
+  // flagship + device-local publishes exactly as before.
+  const [registry, setRegistry] = useState<PublishedTender[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { listRegistryTenders } = await import("./midnight/tenderRegistry.server");
+        const items = await listRegistryTenders();
+        if (cancelled || !Array.isArray(items)) return;
+        setRegistry(items.filter(isValidPublishedTender));
+      } catch {
+        /* registry unavailable — local data still works */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const merged = mergePublishedSources(registry, published);
 
   const load = useCallback(async (next: ChainConfig) => {
     if (!isConfigured(next)) {
@@ -68,7 +94,7 @@ export function useChainTenders(): ChainTenders {
   // with zero counts — the tender stays listed and biddable.
   const [extraActivity, setExtraActivity] = useState<Record<string, ChainActivity>>({});
   const { indexerUrl, contractAddress } = config;
-  const extraKey = published
+  const extraKey = merged
     .map((entry) => entry.address)
     .filter((address) => address !== contractAddress)
     .sort()
@@ -108,10 +134,10 @@ export function useChainTenders(): ChainTenders {
   // fictional listings.
   const base = activity ? activityToTenders(activity) : [];
   const known = new Set(base.map((tender) => tender.contractAddress ?? tender.id));
-  // Newest first: device publishes (stored newest-first) ahead of chain
+  // Newest first: shared registry, then device publishes, ahead of chain
   // records, so home and directory always lead with the latest opportunity.
   const tenders: Tender[] = [
-    ...published
+    ...merged
       .filter((entry) => !known.has(entry.address))
       .map((entry) =>
         applyLiveCounts(publishedToTender(entry), extraActivity[entry.address] ?? null),

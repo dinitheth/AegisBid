@@ -37,6 +37,14 @@
   server (`VITE_MIDNIGHT_PROOF_SERVER`, default `http://127.0.0.1:6300` —
   run it via Docker, as Lace requires). Deploy page offers both connects;
   bidding submits through whichever wallet is connected.
+- Global discovery: the directory queries one configured contract, so new
+  publishes would stay invisible to everyone else. `tenderRegistry.server.ts`
+  keeps a shared newest-first list (Upstash Redis REST via
+  `TENDER_REGISTRY_URL`/`TENDER_REGISTRY_TOKEN`; degrades to local-only when
+  unset). Publishing auto-registers best-effort; the directory merges
+  registry + device-local + chain with per-tender live counts. Share links
+  (`?contract=&issuer=&deadline=&mode=&reserve=`, see `parseSharedTender`)
+  import a tender onto any device without the registry.
 
 Pinned versions (docs support matrix, Sep 2026): Midnight.js `4.1.1`,
 compact toolchain `0.31.1`, proof server `8.1.0`, indexer v4.

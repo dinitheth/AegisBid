@@ -191,21 +191,50 @@ export type PublishedTender = {
 
 const PUBLISHED_KEY = "aegis-published-tenders";
 
+/** Strict shape check shared by local history, share links, and the registry. */
+export function isValidPublishedTender(entry: unknown): entry is PublishedTender {
+  if (typeof entry !== "object" || entry === null) return false;
+  const record = entry as Record<string, unknown>;
+  return (
+    typeof record["address"] === "string" &&
+    /^[0-9a-f]{64}$/.test(record["address"]) &&
+    typeof record["issuer"] === "string" &&
+    (record["mode"] === "highest" || record["mode"] === "lowest") &&
+    typeof record["reserve"] === "string" &&
+    typeof record["deadline"] === "string" &&
+    typeof record["deployedAt"] === "number"
+  );
+}
+
 export function loadPublishedTenders(): PublishedTender[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(PUBLISHED_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (entry): entry is PublishedTender =>
-        typeof entry === "object" &&
-        entry !== null &&
-        typeof (entry as Record<string, unknown>)["address"] === "string",
-    );
+    return parsed.filter(isValidPublishedTender);
   } catch {
     return [];
   }
+}
+
+/**
+ * Merges tender sources newest-first, deduplicated by address: shared
+ * registry first (same order for every viewer), then device-local records
+ * the registry hasn't seen yet.
+ */
+export function mergePublishedSources(
+  registry: PublishedTender[],
+  local: PublishedTender[],
+): PublishedTender[] {
+  const seen = new Set<string>();
+  const merged: PublishedTender[] = [];
+  for (const entry of [...registry, ...local]) {
+    if (!isValidPublishedTender(entry) || seen.has(entry.address)) continue;
+    seen.add(entry.address);
+    merged.push(entry);
+  }
+  return merged;
 }
 
 export function savePublishedTenders(items: PublishedTender[]): void {

@@ -253,19 +253,27 @@ export function DeployPage() {
       } as Parameters<typeof deployContract>[1]);
       const address: string = deployed.deployTxData.public.contractAddress;
       setContractAddress(address);
+      const record: PublishedTender = {
+        address,
+        issuer,
+        mode,
+        reserve: reserve === "" ? "0" : reserve,
+        deadline: new Date(deadline).toISOString(),
+        deployedAt: Date.now(),
+      };
       setPublished((items) => {
-        const record: PublishedTender = {
-          address,
-          issuer,
-          mode,
-          reserve: reserve === "" ? "0" : reserve,
-          deadline: new Date(deadline).toISOString(),
-          deployedAt: Date.now(),
-        };
         const next = [record, ...items.filter((item) => item.address !== address)].slice(0, 20);
         savePublishedTenders(next);
         return next;
       });
+      // Shared registry: best-effort so everyone else discovers this tender
+      // too. Registry failure never fails the publish — it stays local.
+      try {
+        const { registerTender } = await import("./tenderRegistry.server");
+        await registerTender({ data: record });
+      } catch {
+        /* registry unavailable — local publish still succeeded */
+      }
       // Fresh sample for the next tender — the form never repeats itself.
       const upcoming = SAMPLE_POLICIES[(sampleIndex + 1) % SAMPLE_POLICIES.length];
       if (upcoming) {

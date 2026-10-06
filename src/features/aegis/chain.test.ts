@@ -5,7 +5,9 @@ import {
   applyLiveCounts,
   getChainConfig,
   isConfigured,
+  isValidPublishedTender,
   loadPublishedTenders,
+  mergePublishedSources,
   parseSharedTender,
   publishedToTender,
   type ChainActivity,
@@ -144,5 +146,38 @@ describe("shared tender links", () => {
     expect(parsed?.mode).toBe("highest");
     expect(parsed?.reserve).toBe("0");
     expect(parsed?.issuer).toBe("Shared tender");
+  });
+});
+
+describe("tender registry merge", () => {
+  const local = (address: string, issuer: string): PublishedTender => ({
+    address,
+    issuer,
+    mode: "highest",
+    reserve: "1000",
+    deadline: new Date(Date.now() + 86_400_000).toISOString(),
+    deployedAt: Date.now(),
+  });
+  const addrA = "a".repeat(64);
+  const addrB = "b".repeat(64);
+
+  it("prefers registry order and drops duplicates and invalid rows", () => {
+    const merged = mergePublishedSources(
+      [local(addrA, "from-registry")],
+      [
+        local(addrA, "from-device"),
+        local(addrB, "from-device"),
+        { address: "bogus" } as unknown as PublishedTender,
+      ],
+    );
+    expect(merged.map((entry) => entry.address)).toEqual([addrA, addrB]);
+    expect(merged[0]?.issuer).toBe("from-registry");
+  });
+
+  it("validates registry records strictly", () => {
+    expect(isValidPublishedTender(local(addrA, "ok"))).toBe(true);
+    expect(isValidPublishedTender({ ...local(addrA, "ok"), mode: "bogus" })).toBe(false);
+    expect(isValidPublishedTender({ ...local(addrA, "ok"), address: "short" })).toBe(false);
+    expect(isValidPublishedTender(null)).toBe(false);
   });
 });
