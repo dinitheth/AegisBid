@@ -4,16 +4,26 @@
  */
 import type { OneAmConnectedApi } from "./oneAmWallet";
 import { buildConnectorBase, ctorName } from "./providers";
-import { getPublicStates, createUnprovenCallTxFromInitialStates } from "@midnight-ntwrk/midnight-js-contracts";
+
+const describeKey = (value: unknown): string => {
+  if (typeof value !== "string") return typeof value;
+  if (value.length === 0) return "empty-string";
+  if (/^(0x)?[0-9a-fA-F]+$/.test(value)) return `hex:${value.length}chars`;
+  // Bech32m (mn_addr_…): prefix reveals network/type only, never secrets.
+  // Full keys already appear on-chain; lengths + format suffice here.
+  return `bech32m:${value.length}chars:${value.slice(0, 12)}`;
+};
 
 /**
  * Read-only forensics for a failed bid assembly: replays everything up to
  * (not including) the wallet interaction and reports the shapes involved.
- * No chain effects, no wallet popups, no secrets — constructor names and
- * byte lengths only.
+ * No chain effects, no wallet popups, no secrets — constructor names,
+ * key shapes and byte lengths only. Partial progress is always preserved:
+ * every note appends, nothing early-returns.
  */
 export async function diagnoseCallAssembly(
   api: OneAmConnectedApi,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   compiled: any,
   contractAddress: string,
   witnesses: {
@@ -29,6 +39,13 @@ export async function diagnoseCallAssembly(
   try {
     const { getPublicStates, createUnprovenCallTxFromInitialStates } =
       await import("@midnight-ntwrk/midnight-js-contracts");
+    try {
+      const keys = await api.getShieldedAddresses();
+      notes.push(`coinKey=${describeKey(keys.shieldedCoinPublicKey)}`);
+      notes.push(`encKey=${describeKey(keys.shieldedEncryptionPublicKey)}`);
+    } catch {
+      notes.push("keys=unreadable");
+    }
     const base = await buildConnectorBase(api);
     const states = (await getPublicStates(
       base.publicDataProvider,
@@ -38,7 +55,6 @@ export async function diagnoseCallAssembly(
       zswapChainState?: unknown;
       ledgerParameters?: unknown;
     };
-    const notes: string[] = [];
     notes.push(`initialContractState=${ctorName(states.contractState)}`);
     const callData = await createUnprovenCallTxFromInitialStates(
       base.zkConfigProvider,
@@ -59,10 +75,13 @@ export async function diagnoseCallAssembly(
       `nextContractState=${ctorName((callData as unknown as { public?: { nextContractState?: unknown } }).public?.nextContractState)}`,
     );
   } catch (error) {
-    return `diag-threw=${(error instanceof Error ? error.message : String(error)).slice(0, 200)}`;
+    notes.push(
+      `diag-threw=${(error instanceof Error ? error.message : String(error)).slice(0, 200)}`,
+    );
   }
-  return [
+  notes.push(
     `witnesses=amount:${typeof witnesses.amount},salt:${witnesses.salt?.length}B,identity:${witnesses.identitySecret?.length}B,key:${witnesses.bidderKey?.length}B`,
     `args=key:${bidderKey?.length}B,now:${typeof nowSec}`,
-  ].join(" | ");
+  );
+  return notes.join(" | ");
 }
