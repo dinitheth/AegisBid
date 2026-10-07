@@ -2013,7 +2013,12 @@ function SiteFooter({
             © {year} AegisBid. Built on Midnight Network. Offers and results handled under the
             platform terms shown with each tender.
           </span>
-          <span>Sealed offers · Verified results · Losing prices stay private</span>
+          <span>
+            Sealed offers · Verified results · Losing prices stay private ·{" "}
+            <span className="font-mono" title="Built source commit">
+              {typeof __BUILD_SHA__ === "string" ? __BUILD_SHA__ : "local"}
+            </span>
+          </span>
         </div>
       </div>
     </footer>

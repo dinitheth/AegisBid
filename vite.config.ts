@@ -36,10 +36,18 @@ export default defineConfig({
   nitro: { preset: process.env["VERCEL"] ? "vercel" : "node-server" },
   vite: {
     plugins: [wasm()],
+    define: {
+      global: "globalThis",
+      // Short commit of the built source (Vercel provides it; local builds
+      // say "local"). Shown tiny in the footer so any screenshot identifies
+      // exactly which deployment is under test.
+      __BUILD_SHA__: JSON.stringify(
+        (process.env["VERCEL_GIT_COMMIT_SHA"] ?? "local").slice(0, 7),
+      ),
+    },
     resolve: {
       alias: [{ find: /^buffer$/, replacement: bufferEntry }],
     },
-    define: { global: "globalThis" },
     optimizeDeps: {
       // buffer + compact-runtime MUST be pre-bundled: the absolute buffer
       // alias serves raw CJS (`require` at index.js:11) and compact-runtime's
