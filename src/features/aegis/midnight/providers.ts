@@ -18,7 +18,7 @@ import { deployContract, submitCallTx } from "@midnight-ntwrk/midnight-js-contra
 import { Contract, TenderMode } from "../../../../managed/aegis-bid/contract/index.js";
 import { hexToBytes, stringToBytes32 } from "./contract";
 import type { OneAmConnectedApi } from "./oneAmWallet";
-import { diagnoseCallAssembly } from "./forensics";
+import * as forensicsModule from "./forensics";
 
 export const ZK_BASE =
   (import.meta.env["VITE_ZK_CONFIG_BASE"] as string | undefined) ||
@@ -342,7 +342,7 @@ export async function submitLiveBid(input: {
     // whatever we could gather before re-throwing.
     let forensics = "";
     try {
-      forensics = await diagnoseCallAssembly(
+      forensics = await forensicsModule.diagnoseCallAssembly(
         input.api,
         compiled,
         input.contractAddress,
