@@ -14,7 +14,7 @@ import { setNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
 import { FetchZkConfigProvider } from "@midnight-ntwrk/midnight-js-fetch-zk-config-provider";
 import { indexerPublicDataProvider } from "@midnight-ntwrk/midnight-js-indexer-public-data-provider";
 import { CompiledContract } from "@midnight-ntwrk/compact-js";
-import { deployContract, submitCallTx } from "@midnight-ntwrk/midnight-js-contracts";
+import { deployContract, findDeployedContract, submitCallTx } from "@midnight-ntwrk/midnight-js-contracts";
 import { Contract, TenderMode } from "../../../../managed/aegis-bid/contract/index.js";
 import { hexToBytes, stringToBytes32 } from "./contract";
 import type { OneAmConnectedApi } from "./oneAmWallet";
@@ -325,15 +325,19 @@ export async function submitLiveBid(input: {
     input.walletKind === "lace"
       ? await buildLaceProviders(input.api, input.witnesses, laceOpts)
       : await buildOneAmProviders(input.api, input.witnesses);
+
+  // Use high-level contract API (like RPS sample) instead of raw submitCallTx.
+  // This correctly handles ChargedState/StateValue wrapping.
+  const { findDeployedContract } = await import("@midnight-ntwrk/midnight-js-contracts");
+  const foundContract = await findDeployedContract(providers, {
+    compiledContract: compiled,
+    contractAddress: input.contractAddress,
+  });
+
   try {
-    const result = await submitCallTx(providers, {
-      compiledContract: compiled,
-      contractAddress: input.contractAddress,
-      circuitId: "submitBid",
-      args: [input.bidderKey, input.nowSec],
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
-    const pub = result.public as { txHash?: string; txId?: string };
+    // Use high-level contract API (matches RPS sample pattern)
+    const result = await (foundContract.callTx as any)["submitBid"](input.bidderKey, input.nowSec);
+    const pub = result as { txHash?: string; txId?: string };
     return pub.txHash ?? pub.txId ?? "";
   } catch (cause) {
     // Attach assembly forensics so the Technical details box shows WHAT was
