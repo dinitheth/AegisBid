@@ -392,9 +392,11 @@ export async function submitLiveBid(input: {
   } catch (cause) {
     // Attach assembly forensics so the Technical details box shows WHAT was
     // malformed, not just that the merge rejected it. Read-only: no wallet
-    // popups, no chain effects.
+    // popups, no chain effects. If forensics itself fails, still attach
+    // whatever we could gather before re-throwing.
+    let forensics = "";
     try {
-      const forensics = await diagnoseCallAssembly(
+      forensics = await diagnoseCallAssembly(
         input.api,
         compiled,
         input.contractAddress,
@@ -402,10 +404,10 @@ export async function submitLiveBid(input: {
         input.bidderKey,
         input.nowSec,
       );
-      const message = cause instanceof Error ? cause.message : String(cause);
-      throw new Error(`${message}\n[forensics: ${forensics}]`, { cause });
-    } catch {
-      throw cause;
+    } catch (diagError) {
+      forensics = `forensics-failed: ${diagError instanceof Error ? diagError.message.slice(0, 120) : String(diagError).slice(0, 120)}`;
     }
+    const message = cause instanceof Error ? cause.message : String(cause);
+    throw new Error(`${message}\n[forensics: ${forensics}]`, { cause });
   }
 }
