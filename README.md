@@ -8,7 +8,7 @@ AegisBid is a zero-knowledge shielded tender and sealed-bid protocol designed fo
 
 ```bash
 bun install        # or: npm install
-bun run test       # 18 protocol invariants (Vitest) — must be green
+bun run test       # 64 automated checks (Vitest) — must be green
 bun run compact:check  # 24 contract structural gates — must pass
 bun run dev        # open the printed local URL
 ```
@@ -175,7 +175,7 @@ For network-level tests, repeat these cases through generated bindings against `
 
 ## Tests
 
-Automated suite — Vitest, 18 tests, all passing:
+Automated suite — Vitest, 64 checks across 11 test files:
 
 ```bash
 bun run test         # run once
@@ -188,6 +188,13 @@ bun run test:watch   # watch mode
 | `src/features/aegis/tenderEngine.test.ts` | Three-party sealed bid (winner disclosed, losers redacted); under-reserve, post-deadline, duplicate-identity, non-optimal-winner, and incomplete-bid-set rejections; lowest-compliant ceiling mode |
 | `src/features/aegis/storedBids.test.ts` | Legacy stored-bid migration; UI commitments match the protocol engine |
 | `src/features/aegis/evaluator.test.ts` | UI-tender to engine config mapping, stored-bid to witness conversion, adapter `beginEvaluation` + `settle` flow, non-optimal / under-reserve rejections |
+| `src/features/aegis/chain.test.ts` | Default preprod tender, shared links, published-tender validation and merging, indexer activity overlays |
+| `src/features/aegis/wallet.test.ts` | Wallet balance display formatting and invalid-input handling |
+| `src/features/aegis/midnight/contract.test.ts` | Deployment status, Compact constructor mapping, byte conversion, bid and settlement witness builders |
+| `src/features/aegis/midnight/networks.test.ts` | Network identifiers and pinned Midnight endpoint configuration |
+| `src/features/aegis/midnight/oneAmWallet.test.ts` | 1AM/Lace connector discovery, connection timeout, and user-facing wallet errors |
+| `src/features/aegis/midnight/providers.test.ts` | Browser provider construction, ZK artifact path, wallet/proof-server selection, and private-state scoping |
+| `src/features/aegis/midnight/forensics.test.ts` | Failure-forensics diagnostics retain useful partial evidence when transaction assembly fails |
 
 Negative tests verify that rejected operations do not mutate state. Cases map
 directly to the contract invariants (`tenderEngine.ts` mirrors
