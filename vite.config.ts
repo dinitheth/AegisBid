@@ -47,6 +47,17 @@ export default defineConfig({
     },
     resolve: {
       alias: [{ find: /^buffer$/, replacement: bufferEntry }],
+      // Midnight's WASM wrappers use JavaScript class identity. Without
+      // deduplication, Vite/Rolldown can evaluate compact-runtime and its
+      // onchain runtime twice across the generated contract and SDK package
+      // boundaries. That makes a valid StateValue fail an `instanceof` check
+      // inside ChargedState only in the production browser bundle.
+      // This is Midnight's documented Vite workaround for WASM
+      // dual-instantiation.
+      dedupe: [
+        "@midnight-ntwrk/compact-runtime",
+        "@midnight-ntwrk/onchain-runtime-v3",
+      ],
     },
     optimizeDeps: {
       // buffer + compact-runtime MUST be pre-bundled: the absolute buffer
@@ -56,22 +67,6 @@ export default defineConfig({
       include: ["buffer", "@midnight-ntwrk/compact-runtime"],
       exclude: ["@midnight-ntwrk/ledger-v8", "@midnight-ntwrk/onchain-runtime-v3"],
     },
-    build: {
-      target: "esnext",
-      // Force a single shared chunk for onchain-runtime to prevent duplicate
-      // WASM instances causing instanceof failures. Both client (providers)
-      // and server (dist) chunks must share the same WASM instance.
-      rollupOptions: {
-        output: {
-          // Rolldown expects a function for manualChunks
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          manualChunks: (id: string) => {
-            if (id.includes("@midnight-ntwrk/onchain-runtime-v3")) return "onchain-runtime";
-            if (id.includes("@midnight-ntwrk/ledger-v8")) return "ledger";
-            if (id.includes("@midnight-ntwrk/compact-runtime")) return "compact-runtime";
-          },
-        },
-      },
-    },
+    build: { target: "esnext" },
   },
 });
