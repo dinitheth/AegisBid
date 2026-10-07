@@ -13,11 +13,9 @@
  */
 import { ensureBrowserBuffer } from "./polyfills";
 import { useEffect, useState } from "react";
-import { deployContract } from "@midnight-ntwrk/midnight-js-contracts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { buildLaceProviders, buildOneAmProviders, toBindingTenderConfig } from "./providers";
 import { formatConnectorDust } from "../wallet";
 import { loadPublishedTenders, savePublishedTenders, type PublishedTender } from "../chain";
 
@@ -98,6 +96,11 @@ export function DeployPage() {
   const [contractAddress, setContractAddress] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Keep this screen lightweight. The provider module imports the Midnight
+  // ledger WASM runtime, which is only needed after the user chooses to
+  // publish. Loading it here used to leave this ordinary form suspended on a
+  // slow connection before it could render.
 
   // Share links carry the public policy so anyone opening one sees the full
   // tender (policy from the link, live counts from the indexer) — no
@@ -204,6 +207,11 @@ export function DeployPage() {
       step = "connecting providers";
       setStatus("Downloading proving keys (one-time, ~14 MB)...");
       const walletLabel = info?.walletName === "Lace" ? "Lace" : "1AM";
+      const [{ buildLaceProviders, buildOneAmProviders, toBindingTenderConfig }, { deployContract }] =
+        await Promise.all([
+          import("./providers"),
+          import("@midnight-ntwrk/midnight-js-contracts"),
+        ]);
       const { providers, compiled, provingVia } = await withRetry("connecting providers", () =>
         walletLabel === "Lace" ? buildLaceProviders(api) : buildOneAmProviders(api),
       );
@@ -226,7 +234,7 @@ export function DeployPage() {
       const deployed = await deployContract(providers, {
         compiledContract: compiled,
         args: [ledgerConfig],
-      } as Parameters<typeof deployContract>[1]);
+      } as never);
       const address: string = deployed.deployTxData.public.contractAddress;
       setContractAddress(address);
       const record: PublishedTender = {

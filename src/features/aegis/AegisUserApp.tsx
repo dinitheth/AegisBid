@@ -131,10 +131,17 @@ function shortAddress(address: string) {
   return address.length > 16 ? `${address.slice(0, 8)}...${address.slice(-6)}` : address;
 }
 
-/** Preloads the heavy deploy chunk so first navigation feels instant. */
+/** Preloads the lightweight deploy form; proving code remains click-only. */
 function preloadDeployChunk() {
   void import("./midnight/DeployPage").catch(() => {
     /* loaded on demand when actually navigated to */
+  });
+}
+
+/** Start downloading the transaction runtime when a bidder opens an active tender. */
+function preloadBidTransactionStack() {
+  void import("./midnight/providers").catch(() => {
+    /* Submit still retries this import and surfaces a useful error. */
   });
 }
 
@@ -591,9 +598,11 @@ function BidPage({
   // Warm the heavy provider chunk while the user reads the form, so live
   // submit doesn't stall on first download.
   useEffect(() => {
-    void import("./midnight/providers").catch(() => {
-      /* loaded on demand at submit time */
-    });
+    // Give the form a paint first, then warm the WASM-backed transaction
+    // stack while the bidder enters their amount. The button therefore does
+    // not spend its first click downloading SDK code.
+    const timer = window.setTimeout(preloadBidTransactionStack, 0);
+    return () => window.clearTimeout(timer);
   }, []);
   // Empty wallets die later with a cryptic ledger error — warn up front.
   const noDust = (() => {
@@ -648,11 +657,12 @@ function BidPage({
         return;
       }
       try {
-        setStage(`Submitting sealed bid on preprod (approve in ${liveLabel})`);
+        setStage("Preparing secure transaction...");
         ensureBrowserBuffer();
         // Dynamic import: the provider stack pulls WASM-backed modules that
         // must never evaluate during SSR.
         const { submitLiveBid } = await import("./midnight/providers");
+        setStage(`Submitting sealed bid on preprod (approve in ${liveLabel})`);
         const txHash = await submitLiveBid({
           api: liveApi,
           contractAddress: liveContract,
@@ -2059,6 +2069,7 @@ export function AegisUserApp() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const openTender = (tender: Tender) => {
+    if (tender.status === "Active") preloadBidTransactionStack();
     setSelected(tender);
     navigate(tender.status === "Active" ? "bid" : "results");
   };
