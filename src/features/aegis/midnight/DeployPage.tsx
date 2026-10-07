@@ -455,7 +455,7 @@ export function DeployPage() {
             Tenders you published from this device. Bidders find them in the explorer; amounts stay
             sealed.
           </p>
-          <div className="mt-4 space-y-3">
+          <div className="nice-scroll mt-4 max-h-[24rem] space-y-3 overflow-y-auto pr-1">
             {published.map((item) => (
               <article key={item.address} className="rounded-md border border-border p-4 text-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">

@@ -256,6 +256,24 @@
   }
 }
 
+@utility nice-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-primary) transparent;
+  &::-webkit-scrollbar {
+    width: 0.5rem;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--color-primary) 35%, transparent);
+    border-radius: 9999px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--color-primary) 60%, transparent);
+  }
+}
+
 @utility ocean-grid {
   background-image:
     linear-gradient(color-mix(in oklab, var(--color-primary) 4%, transparent) 1px, transparent 1px),
