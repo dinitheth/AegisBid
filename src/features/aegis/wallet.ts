@@ -78,7 +78,7 @@ export function formatConnectorDust(raw: string | undefined): string {
     const frac = value % DUST_BASE_UNITS;
     const grouped = whole.toLocaleString("en-US");
     if (frac === 0n) return grouped;
-    const fracDigits = frac.toString().padStart(15, "0").replace(/0+$/, "").slice(0, 6);
+    const fracDigits = frac.toString().padStart(15, "0").replace(/0+$/, "").slice(0, 2);
     return `${grouped}.${fracDigits}`;
   } catch {
     return raw;

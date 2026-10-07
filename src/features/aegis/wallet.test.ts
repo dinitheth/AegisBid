@@ -11,8 +11,8 @@ describe("formatConnectorDust", () => {
     expect(formatConnectorDust("")).toBe("0");
   });
 
-  it("shows up to 6 fractional digits", () => {
-    expect(formatConnectorDust("2500123456000000000")).toBe("2,500.123456");
+  it("rounds to at most 2 fractional digits", () => {
+    expect(formatConnectorDust("2500123456000000000")).toBe("2,500.12");
     expect(formatConnectorDust("1500000000000000")).toBe("1.5");
   });
 
