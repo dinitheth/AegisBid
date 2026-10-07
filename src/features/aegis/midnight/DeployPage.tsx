@@ -94,6 +94,7 @@ export function DeployPage() {
   const [spec, setSpec] = useState(sample.spec);
   const [status, setStatus] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [failureDetail, setFailureDetail] = useState<string | null>(null);
   const [contractAddress, setContractAddress] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -158,6 +159,7 @@ export function DeployPage() {
     if (!entry) return;
     setBusy(true);
     setFailure(null);
+    setFailureDetail(null);
     try {
       setStatus(`Waiting for ${entry.label} approval...`);
       const connected = (await Promise.race([
@@ -190,6 +192,8 @@ export function DeployPage() {
       setStatus(null);
     } catch (cause) {
       setFailure(friendlyWalletError(cause));
+      const detail = cause instanceof Error ? (cause.stack ?? cause.message) : String(cause);
+      setFailureDetail(detail.slice(0, 800));
     } finally {
       setBusy(false);
     }
@@ -200,6 +204,7 @@ export function DeployPage() {
     ensureBrowserBuffer();
     setBusy(true);
     setFailure(null);
+    setFailureDetail(null);
     setContractAddress(null);
     let step = "starting";
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -294,6 +299,8 @@ export function DeployPage() {
         ? " Public services are busy — wait a minute and retry."
         : "";
       setFailure(`Could not publish. ${friendly}${hint}`);
+      const detail = cause instanceof Error ? (cause.stack ?? cause.message) : String(cause);
+      setFailureDetail(detail.slice(0, 800));
     } finally {
       setBusy(false);
     }
@@ -421,9 +428,17 @@ export function DeployPage() {
           ? null
           : status && <p className="mt-3 text-sm text-muted-foreground">{status}</p>}
         {failure && (
-          <p className="mt-4 whitespace-pre-wrap break-all rounded-md border border-destructive/40 bg-destructive/10 p-3 font-mono text-xs text-destructive">
+          <p className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
             {failure}
           </p>
+        )}
+        {failureDetail && (
+          <details className="mt-2 text-xs text-card-foreground/60">
+            <summary className="cursor-pointer underline">Technical details</summary>
+            <pre className="mt-1 whitespace-pre-wrap break-all rounded-md border border-border bg-muted/40 p-3 font-mono">
+              {failureDetail}
+            </pre>
+          </details>
         )}
         {contractAddress &&
           (() => {

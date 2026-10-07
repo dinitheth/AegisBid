@@ -117,8 +117,11 @@ export function friendlyWalletError(cause: unknown): string {
   if (/user rejected|rejected the request|declined|denied|cancelled/i.test(firstLine)) {
     return "You declined the request in your wallet. Nothing was sent — try again whenever you're ready.";
   }
-  if (/expected instance of|scoped transaction|failed to balance|insufficient/i.test(raw)) {
-    return "Your wallet couldn't prepare the transaction — this usually means it holds no funds. Get test tokens from the preprod faucet, then try again.";
+  if (/insufficient (funds|balance|dust)/i.test(firstLine)) {
+    return "Your wallet couldn't prepare the transaction — it may hold no funds. Get test tokens from the preprod faucet, then try again.";
+  }
+  if (/expected instance of|scoped transaction|failed to balance/i.test(raw)) {
+    return "The wallet failed while preparing the transaction. Open Technical details below and share the text so the cause can be traced.";
   }
   const looksTechnical =
     /chrome-extension|\(\S+\.js:\d+|\bat \w+ \(/i.test(raw) || firstLine.length > 220;

@@ -17,7 +17,7 @@ describe("friendlyWalletError", () => {
     );
   });
 
-  it("points empty-wallet ledger failures at the faucet", () => {
+  it("asks for the technical text on wallet preparation failures", () => {
     expect(
       friendlyWalletError(
         new Error(
@@ -25,7 +25,13 @@ describe("friendlyWalletError", () => {
         ),
       ),
     ).toBe(
-      "Your wallet couldn't prepare the transaction — this usually means it holds no funds. Get test tokens from the preprod faucet, then try again.",
+      "The wallet failed while preparing the transaction. Open Technical details below and share the text so the cause can be traced.",
+    );
+  });
+
+  it("points explicit insufficient-funds errors at the faucet", () => {
+    expect(friendlyWalletError(new Error("insufficient funds for transaction"))).toBe(
+      "Your wallet couldn't prepare the transaction — it may hold no funds. Get test tokens from the preprod faucet, then try again.",
     );
   });
 

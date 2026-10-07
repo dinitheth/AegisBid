@@ -541,6 +541,7 @@ function BidPage({
   const [sending, setSending] = useState(false);
   const [stage, setStage] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [failureDetail, setFailureDetail] = useState<string | null>(null);
   const oneAm = useOneAmWallet();
   const balance = Number(wallet.balanceRaw) / 1_000_000;
   const fee = 0.35;
@@ -560,6 +561,7 @@ function BidPage({
     if (!amount || !agreed || biddingClosed) return;
     setSending(true);
     setFailure(null);
+    setFailureDetail(null);
     const submittedAt = Date.now();
     // Binding commitment via the protocol engine (SHA-256 over amount:salt:key),
     // matching the `submitBid` commitment model in contracts/aegis_bid.compact.
@@ -625,6 +627,9 @@ function BidPage({
       } catch (cause) {
         const reason = friendlyWalletError(cause);
         setFailure(reason);
+        const detail = cause instanceof Error ? (cause.stack ?? cause.message) : String(cause);
+        setFailureDetail(detail.slice(0, 800));
+        console.error("Live bid failed:", cause);
         onSubmit({ ...base, receipt: commitment, onChain: false, accepted: false, note: reason });
       } finally {
         setStage(null);
@@ -791,6 +796,14 @@ function BidPage({
             <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
               {failure}
             </p>
+          )}
+          {failureDetail && (
+            <details className="mt-2 text-xs text-card-foreground/60">
+              <summary className="cursor-pointer underline">Technical details</summary>
+              <pre className="mt-1 whitespace-pre-wrap break-all rounded-md border border-border bg-muted/40 p-3 font-mono">
+                {failureDetail}
+              </pre>
+            </details>
           )}
         </section>
         <aside className="self-start rounded-lg border border-border bg-section p-6">
