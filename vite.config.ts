@@ -56,6 +56,22 @@ export default defineConfig({
       include: ["buffer", "@midnight-ntwrk/compact-runtime"],
       exclude: ["@midnight-ntwrk/ledger-v8", "@midnight-ntwrk/onchain-runtime-v3"],
     },
-    build: { target: "esnext" },
+    build: {
+      target: "esnext",
+      // Force a single shared chunk for onchain-runtime to prevent duplicate
+      // WASM instances causing instanceof failures. Both client (providers)
+      // and server (dist) chunks must share the same WASM instance.
+      rollupOptions: {
+        output: {
+          // Rolldown expects a function for manualChunks
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          manualChunks: (id: string) => {
+            if (id.includes("@midnight-ntwrk/onchain-runtime-v3")) return "onchain-runtime";
+            if (id.includes("@midnight-ntwrk/ledger-v8")) return "ledger";
+            if (id.includes("@midnight-ntwrk/compact-runtime")) return "compact-runtime";
+          },
+        },
+      },
+    },
   },
 });
