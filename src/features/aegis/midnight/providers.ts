@@ -18,6 +18,7 @@ import { deployContract, submitCallTx } from "@midnight-ntwrk/midnight-js-contra
 import { Contract, TenderMode } from "../../../../managed/aegis-bid/contract/index.js";
 import { hexToBytes, stringToBytes32 } from "./contract";
 import type { OneAmConnectedApi } from "./oneAmWallet";
+import { diagnoseCallAssembly } from "./forensics";
 
 export const ZK_BASE =
   (import.meta.env["VITE_ZK_CONFIG_BASE"] as string | undefined) ||
@@ -127,7 +128,7 @@ export function createMemoryPrivateStateProvider() {
   };
 }
 
-async function buildConnectorBase(api: OneAmConnectedApi, bid?: PrivateBidWitnesses) {
+export async function buildConnectorBase(api: OneAmConnectedApi, bid?: PrivateBidWitnesses) {
   const config = await api.getConfiguration();
   setNetworkId(config.networkId || "preprod");
 
@@ -299,68 +300,13 @@ export async function buildLaceProviders(
   };
 }
 
-const ctorName = (value: unknown): string => {
+export const ctorName = (value: unknown): string => {
   if (value === null) return "null";
   if (value === undefined) return "undefined";
   if (Array.isArray(value)) return `array[${value.length}]`;
   const name = (value as { constructor?: { name?: unknown } }).constructor?.name ?? typeof value;
   return typeof name === "string" ? name : typeof value;
 };
-
-/**
- * Read-only forensics for a failed bid assembly: replays everything up to
- * (not including) the wallet interaction and reports the shapes involved.
- * No chain effects, no wallet popups, no secrets — constructor names and
- * byte lengths only.
- */
-async function diagnoseCallAssembly(
-  api: OneAmConnectedApi,
-  compiled: AegisProviders["compiled"],
-  contractAddress: string,
-  witnesses: PrivateBidWitnesses,
-  bidderKey: Uint8Array,
-  nowSec: bigint,
-): Promise<string> {
-  const notes: string[] = [];
-  try {
-    const { getPublicStates, createUnprovenCallTxFromInitialStates } =
-      await import("@midnight-ntwrk/midnight-js-contracts");
-    const base = await buildConnectorBase(api);
-    const states = (await getPublicStates(base.publicDataProvider, contractAddress)) as unknown as {
-      contractState?: unknown;
-      zswapChainState?: unknown;
-      ledgerParameters?: unknown;
-    };
-    notes.push(`initialContractState=${ctorName(states.contractState)}`);
-    const callData = await createUnprovenCallTxFromInitialStates(
-      base.zkConfigProvider,
-      {
-        compiledContract: compiled,
-        contractAddress,
-        coinPublicKey: "ab".repeat(32),
-        circuitId: "submitBid",
-        args: [bidderKey, nowSec],
-        initialContractState: states.contractState,
-        initialZswapChainState: states.zswapChainState,
-        ledgerParameters: states.ledgerParameters,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any,
-      "ab".repeat(32),
-    );
-    notes.push(
-      `nextContractState=${ctorName((callData as unknown as { public?: { nextContractState?: unknown } }).public?.nextContractState)}`,
-    );
-  } catch (error) {
-    notes.push(
-      `diag-threw=${(error instanceof Error ? error.message : String(error)).slice(0, 200)}`,
-    );
-  }
-  notes.push(
-    `witnesses=amount:${typeof witnesses.amount},salt:${witnesses.salt?.length}B,identity:${witnesses.identitySecret?.length}B,key:${witnesses.bidderKey?.length}B`,
-    `args=key:${bidderKey?.length}B,now:${typeof nowSec}`,
-  );
-  return notes.join(" | ");
-}
 
 /** Submits one sealed bid to a live contract; resolves with the tx hash. */
 export async function submitLiveBid(input: {
