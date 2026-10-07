@@ -344,8 +344,12 @@ export async function submitLiveBid(input: {
 
   // Derive the secret key from the wallet's shielded coin public key for the private state.
   // The contract uses this secret key to derive p1_key/p2_key for the bid commitment.
+  // The shielded coin public key is in bech32m format; convert to 32-byte array.
   const keys = await input.api.getShieldedAddresses();
-  const secretKey = keys.shieldedCoinPublicKey; // Use shielded coin public key as secret key
+  const { parseCoinPublicKeyToHex } = await import("@midnight-ntwrk/midnight-js-utils");
+  const networkId = (await input.api.getConfiguration()).networkId || "preprod";
+  const coinHex = parseCoinPublicKeyToHex(keys.shieldedCoinPublicKey, networkId);
+  const secretKey = hexToBytes(coinHex); // 32-byte array for the contract's Bytes<32> secretKey
 
   // Initial private state for the contract - contains secret key for key derivation
   const initialPrivateState = {
