@@ -35,6 +35,22 @@ export type PrivateBidWitnesses = {
 };
 
 /**
+ * Private state ID for the AegisBid contract.
+ * Matches the private state ID used in the contract's witness functions.
+ */
+export const AegisBidPrivateStateId = "aegis-bid-private-state" as const;
+
+/**
+ * Initial private state for the AegisBid contract.
+ * Contains the secret key for deriving p1_key/p2_key, and placeholders for myMove/mySalt.
+ */
+export const INITIAL_AEGISBID_PRIVATE_STATE = {
+  secretKey: new Uint8Array(32), // Will be derived from wallet
+  myMove: 0n,
+  mySalt: new Uint8Array(32),
+} as const;
+
+/**
  * Witness implementations MUST be inline object literals at the
  * withWitnesses call site: the SDK's conditional types only resolve when
  * TypeScript infers from a fresh literal. Pre-typed helpers (Record or the
@@ -326,12 +342,26 @@ export async function submitLiveBid(input: {
       ? await buildLaceProviders(input.api, input.witnesses, laceOpts)
       : await buildOneAmProviders(input.api, input.witnesses);
 
+  // Derive the secret key from the wallet's shielded coin public key for the private state.
+  // The contract uses this secret key to derive p1_key/p2_key for the bid commitment.
+  const keys = await input.api.getShieldedAddresses();
+  const secretKey = keys.shieldedCoinPublicKey; // Use shielded coin public key as secret key
+
+  // Initial private state for the contract - contains secret key for key derivation
+  const initialPrivateState = {
+    secretKey,
+    myMove: 0n,
+    mySalt: new Uint8Array(32),
+  };
+
   // Use high-level contract API (like RPS sample) instead of raw submitCallTx.
   // This correctly handles ChargedState/StateValue wrapping.
   const { findDeployedContract } = await import("@midnight-ntwrk/midnight-js-contracts");
   const foundContract = await findDeployedContract(providers, {
     compiledContract: compiled,
     contractAddress: input.contractAddress,
+    privateStateId: AegisBidPrivateStateId,
+    initialPrivateState,
   });
 
   try {
