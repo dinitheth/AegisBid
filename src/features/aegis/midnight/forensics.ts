@@ -4,6 +4,7 @@
  */
 import type { OneAmConnectedApi } from "./oneAmWallet";
 import { buildConnectorBase, ctorName } from "./providers";
+import { getPublicStates, createUnprovenCallTxFromInitialStates } from "@midnight-ntwrk/midnight-js-contracts";
 
 /**
  * Read-only forensics for a failed bid assembly: replays everything up to
@@ -37,6 +38,7 @@ export async function diagnoseCallAssembly(
       zswapChainState?: unknown;
       ledgerParameters?: unknown;
     };
+    const notes: string[] = [];
     notes.push(`initialContractState=${ctorName(states.contractState)}`);
     const callData = await createUnprovenCallTxFromInitialStates(
       base.zkConfigProvider,
