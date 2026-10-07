@@ -1,5 +1,52 @@
-import { describe, expect, it } from "vitest";
-import { friendlyWalletError } from "./oneAmWallet";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  CONNECT_TIMEOUT_MS,
+  connectDetectedWallet,
+  friendlyWalletError,
+  type DetectedWallet,
+  type OneAmInitialApi,
+} from "./oneAmWallet";
+
+describe("connectDetectedWallet", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns the connected api and display info", async () => {
+    const connected = {
+      getConfiguration: async () => ({ networkId: "preprod" }),
+      getUnshieldedAddress: async () => ({ unshieldedAddress: "addr-1" }),
+      getDustBalance: async () => ({ balance: 42n }),
+    };
+    const entry = {
+      kind: "1am",
+      key: "1am",
+      label: "1AM",
+      initial: { connect: async () => connected },
+    } as unknown as DetectedWallet;
+    const result = await connectDetectedWallet(entry);
+    expect(result.api).toBe(connected);
+    expect(result.info).toMatchObject({
+      networkId: "preprod",
+      unshieldedAddress: "addr-1",
+      dustBalance: "42",
+      walletName: "1AM",
+    });
+  });
+
+  it("times out instead of hanging on a silent wallet", async () => {
+    vi.useFakeTimers();
+    const entry = {
+      kind: "lace",
+      key: "mnLace",
+      label: "Lace",
+      initial: { connect: () => new Promise<OneAmInitialApi>(() => {}) },
+    } as unknown as DetectedWallet;
+    const pending = connectDetectedWallet(entry);
+    vi.advanceTimersByTime(CONNECT_TIMEOUT_MS);
+    await expect(pending).rejects.toThrow("did not respond in 90s");
+  });
+});
 
 describe("friendlyWalletError", () => {
   it("turns a wallet rejection into one plain sentence", () => {

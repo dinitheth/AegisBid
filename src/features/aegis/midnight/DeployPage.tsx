@@ -22,11 +22,11 @@ import { formatConnectorDust } from "../wallet";
 import { loadPublishedTenders, savePublishedTenders, type PublishedTender } from "../chain";
 
 import {
+  connectDetectedWallet,
   detectWalletConnectors,
   friendlyWalletError,
   useOneAmWallet,
   type DetectedWallet,
-  type OneAmInitialApi,
   type WalletKind,
 } from "./oneAmWallet";
 
@@ -150,10 +150,6 @@ export function DeployPage() {
     };
   }, [detectTick]);
 
-  // A wallet extension can hang when its own backend is unreachable (1AM's
-  // full-page UI then shows "Wallet init timed out ... serverSideScan=true").
-  // Never wait forever: surface a clear message instead.
-  const CONNECT_TIMEOUT_MS = 90_000;
   const connect = async (kind: WalletKind) => {
     const entry = wallets.find((item) => item.kind === kind);
     if (!entry) return;
@@ -162,33 +158,8 @@ export function DeployPage() {
     setFailureDetail(null);
     try {
       setStatus(`Waiting for ${entry.label} approval...`);
-      const connected = (await Promise.race([
-        entry.initial.connect("preprod"),
-        new Promise<never>((_, reject) =>
-          window.setTimeout(
-            () =>
-              reject(
-                new Error(
-                  `${entry.label} did not respond in 90s. The wallet extension itself may be stuck ` +
-                    "initializing (its page shows a vault/scan timeout when its backend is " +
-                    "unreachable). Check your connection, reload the extension, then try again.",
-                ),
-              ),
-            CONNECT_TIMEOUT_MS,
-          ),
-        ),
-      ])) as Awaited<ReturnType<OneAmInitialApi["connect"]>>;
-      const [config, unshielded, dust] = await Promise.all([
-        connected.getConfiguration(),
-        connected.getUnshieldedAddress(),
-        connected.getDustBalance(),
-      ]);
-      setConnected(connected, {
-        networkId: config.networkId,
-        unshieldedAddress: unshielded.unshieldedAddress,
-        dustBalance: String(dust.balance),
-        walletName: entry.label,
-      });
+      const { api: connectedApi, info } = await connectDetectedWallet(entry);
+      setConnected(connectedApi, info);
       setStatus(null);
     } catch (cause) {
       setFailure(friendlyWalletError(cause));

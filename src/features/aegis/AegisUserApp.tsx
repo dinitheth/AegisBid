@@ -51,6 +51,7 @@ import { Component, Suspense, lazy, type ReactNode } from "react";
 import { useChainTenders, type ChainTenders } from "./useChainTenders";
 import {
   OneAmWalletProvider,
+  connectDetectedWallet,
   detectWalletConnectors,
   friendlyWalletError,
   useOneAmWallet,
@@ -130,6 +131,52 @@ function shortAddress(address: string) {
   return address.length > 16 ? `${address.slice(0, 8)}...${address.slice(-6)}` : address;
 }
 
+/** Preloads the heavy deploy chunk so first navigation feels instant. */
+function preloadDeployChunk() {
+  void import("./midnight/DeployPage").catch(() => {
+    /* loaded on demand when actually navigated to */
+  });
+}
+
+function HeaderConnectButton({
+  oneAm,
+  onMissing,
+}: {
+  oneAm: ReturnType<typeof useOneAmWallet>;
+  onMissing: () => void;
+}) {
+  const [connecting, setConnecting] = useState(false);
+  const entry = detectWalletConnectors()[0];
+  const connectHere = async () => {
+    if (!entry) {
+      onMissing();
+      return;
+    }
+    setConnecting(true);
+    try {
+      const { api, info } = await connectDetectedWallet(entry);
+      oneAm.setConnected(api, info);
+    } catch {
+      // Rejection/timeout: stay put. The wallet already explained itself;
+      // the deploy page keeps full install and retry guidance.
+    } finally {
+      setConnecting(false);
+    }
+  };
+  return (
+    <Button
+      className="h-10 rounded-xl px-4 shadow-sm"
+      onClick={() => void connectHere()}
+      disabled={connecting}
+      onMouseEnter={preloadDeployChunk}
+      onFocus={preloadDeployChunk}
+    >
+      <Wallet />
+      {connecting ? "Connecting..." : `Connect ${entry?.label ?? "wallet"}`}
+    </Button>
+  );
+}
+
 function WalletButton({ wallet, onMissing }: { wallet: WalletState; onMissing: () => void }) {
   const oneAm = useOneAmWallet();
   if (oneAm.info) {
@@ -177,16 +224,11 @@ function WalletButton({ wallet, onMissing }: { wallet: WalletState; onMissing: (
       </div>
     );
   }
-  // No wallet extension connected yet: bridge to the live-deploy flow
-  // (Lace preferred, 1AM fallback) instead of a dead button.
+  // No wallet connected yet: connect right here (Lace preferred, 1AM
+  // fallback) instead of navigating away. Only when no wallet extension is
+  // detected at all do we bridge to the deploy page install hints.
   if (!wallet.available && !wallet.connecting) {
-    const primary = detectWalletConnectors()[0]?.label;
-    return (
-      <Button className="h-10 rounded-xl px-4 shadow-sm" onClick={onMissing}>
-        <Wallet />
-        Connect {primary ?? "wallet"}
-      </Button>
-    );
+    return <HeaderConnectButton oneAm={oneAm} onMissing={onMissing} />;
   }
   return (
     <Button
@@ -546,6 +588,13 @@ function BidPage({
   const balance = Number(wallet.balanceRaw) / 1_000_000;
   const fee = 0.35;
   const enough = !wallet.connected || balance >= fee;
+  // Warm the heavy provider chunk while the user reads the form, so live
+  // submit doesn't stall on first download.
+  useEffect(() => {
+    void import("./midnight/providers").catch(() => {
+      /* loaded on demand at submit time */
+    });
+  }, []);
   // Empty wallets die later with a cryptic ledger error — warn up front.
   const noDust = (() => {
     try {

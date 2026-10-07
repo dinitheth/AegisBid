@@ -105,6 +105,51 @@ export function detectLace(): OneAmInitialApi | null {
   return detectWalletConnectors().find((entry) => entry.kind === "lace")?.initial ?? null;
 }
 
+// A wallet extension can hang when its own backend is unreachable (1AM's
+// full-page UI then shows "Wallet init timed out ... serverSideScan=true").
+// Never wait forever: callers surface a clear message instead.
+export const CONNECT_TIMEOUT_MS = 90_000;
+
+/**
+ * Connects a detected wallet with a timeout, returning the connected API
+ * plus display info. Shared by the header button and the deploy page so
+ * connecting behaves identically everywhere.
+ */
+export async function connectDetectedWallet(
+  entry: DetectedWallet,
+): Promise<{ api: OneAmConnectedApi; info: WalletInfo }> {
+  const connected = (await Promise.race([
+    entry.initial.connect("preprod"),
+    new Promise<never>((_, reject) =>
+      globalThis.setTimeout(
+        () =>
+          reject(
+            new Error(
+              `${entry.label} did not respond in 90s. The wallet extension itself may be stuck ` +
+                "initializing (its page shows a vault/scan timeout when its backend is " +
+                "unreachable). Check your connection, reload the extension, then try again.",
+            ),
+          ),
+        CONNECT_TIMEOUT_MS,
+      ),
+    ),
+  ])) as Awaited<ReturnType<OneAmInitialApi["connect"]>>;
+  const [config, unshielded, dust] = await Promise.all([
+    connected.getConfiguration(),
+    connected.getUnshieldedAddress(),
+    connected.getDustBalance(),
+  ]);
+  return {
+    api: connected,
+    info: {
+      networkId: config.networkId,
+      unshieldedAddress: unshielded.unshieldedAddress,
+      dustBalance: String(dust.balance),
+      walletName: entry.label,
+    },
+  };
+}
+
 /**
  * Plain-language wallet errors for normal users. Extension stack traces and
  * raw SDK text never reach the screen; callers can still `console.error` the
