@@ -5,6 +5,12 @@
 import type { OneAmConnectedApi } from "./oneAmWallet";
 import { buildConnectorBase, ctorName } from "./providers";
 
+/** Minimal structural type for wasm-bindgen classes used in instanceof checks. */
+interface WasmClass {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  new (...args: any[]): unknown;
+}
+
 const describeKey = (value: unknown): string => {
   if (typeof value !== "string") return typeof value;
   if (value.length === 0) return "empty-string";
@@ -37,20 +43,37 @@ export async function diagnoseCallAssembly(
 ): Promise<string> {
   const notes: string[] = [];
   try {
-    const { getPublicStates, createUnprovenCallTxFromInitialStates } =
-      await import("@midnight-ntwrk/midnight-js-contracts");
+    const [
+      { getPublicStates, createUnprovenCallTxFromInitialStates },
+      { parseCoinPublicKeyToHex, parseEncPublicKeyToHex },
+      { getNetworkId },
+      { StateValue, ChargedState },
+    ] = await Promise.all([
+      import("@midnight-ntwrk/midnight-js-contracts"),
+      import("@midnight-ntwrk/midnight-js-utils"),
+      import("@midnight-ntwrk/midnight-js-network-id"),
+      import("@midnight-ntwrk/midnight-js-protocol/onchain-runtime"),
+    ]);
+    let coinHex = "";
+    let encHex = "";
     try {
       const keys = await api.getShieldedAddresses();
       notes.push(`coinKey=${describeKey(keys.shieldedCoinPublicKey)}`);
       notes.push(`encKey=${describeKey(keys.shieldedEncryptionPublicKey)}`);
-    } catch {
-      notes.push("keys=unreadable");
+      // Parse EXACTLY like the real submit path does (same functions, same
+      // network id) — a silent mis-parse here poisons everything downstream.
+      const networkId = getNetworkId();
+      notes.push(`networkId=${String(networkId)}`);
+      coinHex = parseCoinPublicKeyToHex(keys.shieldedCoinPublicKey, networkId);
+      encHex = parseEncPublicKeyToHex(keys.shieldedEncryptionPublicKey, networkId);
+      notes.push(`coinHexLen=${coinHex.length}`, `encHexLen=${encHex.length}`);
+    } catch (error) {
+      notes.push(
+        `keyparse-threw=${(error instanceof Error ? error.message : String(error)).slice(0, 160)}`,
+      );
     }
     const base = await buildConnectorBase(api);
-    const states = (await getPublicStates(
-      base.publicDataProvider,
-      contractAddress,
-    )) as unknown as {
+    const states = (await getPublicStates(base.publicDataProvider, contractAddress)) as unknown as {
       contractState?: unknown;
       zswapChainState?: unknown;
       ledgerParameters?: unknown;
@@ -61,7 +84,7 @@ export async function diagnoseCallAssembly(
       {
         compiledContract: compiled,
         contractAddress,
-        coinPublicKey: "ab".repeat(32),
+        coinPublicKey: coinHex === "" ? "ab".repeat(32) : coinHex,
         circuitId: "submitBid",
         args: [bidderKey, nowSec],
         initialContractState: states.contractState,
@@ -69,11 +92,18 @@ export async function diagnoseCallAssembly(
         ledgerParameters: states.ledgerParameters,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any,
-      "ab".repeat(32),
+      encHex === "" ? "ab".repeat(32) : encHex,
     );
-    notes.push(
-      `nextContractState=${ctorName((callData as unknown as { public?: { nextContractState?: unknown } }).public?.nextContractState)}`,
-    );
+    const next = (callData as unknown as { public?: { nextContractState?: unknown } }).public
+      ?.nextContractState;
+    notes.push(`nextContractState=${ctorName(next)}`);
+    notes.push(`nextIsStateValue=${next instanceof (StateValue as unknown as WasmClass)}`);
+    try {
+      new (ChargedState as unknown as WasmClass)(next);
+      notes.push("trialWrap=OK");
+    } catch {
+      notes.push("trialWrap=THROWS");
+    }
   } catch (error) {
     notes.push(
       `diag-threw=${(error instanceof Error ? error.message : String(error)).slice(0, 200)}`,
