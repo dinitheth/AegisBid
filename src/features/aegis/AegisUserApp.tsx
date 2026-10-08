@@ -630,9 +630,6 @@ function BidPage({
       wallet.wallet?.coinPublicKey ??
       `local-device:${submittedAt}`;
     const commitment = makeCommitment(BigInt(amount), salt, bidderKey);
-    // Identity witness for live settlement proofs. Legacy rows lack it and
-    // stay local-only; every new bid records one.
-    const identitySecret = generateNonce();
     const base = {
       tenderId: tender.id,
       tenderTitle: tender.title,
@@ -641,7 +638,7 @@ function BidPage({
       commitment,
       salt,
       bidderKey,
-      identitySecret,
+      identitySecret: "",
       submittedAt,
     };
     const liveApi = oneAm.api;
@@ -669,11 +666,9 @@ function BidPage({
           witnesses: {
             amount: BigInt(amount),
             salt: stringToBytes32(salt),
-            identitySecret: stringToBytes32(identitySecret),
             bidderKey: stringToBytes32(bidderKey),
           },
           bidderKey: stringToBytes32(bidderKey),
-          nowSec: BigInt(Math.floor(submittedAt / 1000)),
           walletKind: liveKind,
         });
         onSubmit({

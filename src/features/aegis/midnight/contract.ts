@@ -108,7 +108,7 @@ export function toLedgerTenderConfig(config: TenderConfig): LedgerTenderConfig {
 export type PrivateBidState = {
   amount: bigint;
   salt: string;
-  identitySecret: string;
+  evaluatorSecret?: string;
 };
 
 /**
@@ -120,9 +120,9 @@ export function buildSubmitBidWitnesses(state: PrivateBidState) {
   return {
     localBidAmount: ({ privateState }: { privateState: unknown }) => [privateState, state.amount],
     localBidSalt: ({ privateState }: { privateState: unknown }) => [privateState, state.salt],
-    localIdentitySecret: ({ privateState }: { privateState: unknown }) => [
+    evaluatorSecret: ({ privateState }: { privateState: unknown }) => [
       privateState,
-      state.identitySecret,
+      state.evaluatorSecret ?? "00".repeat(32),
     ],
   };
 }
@@ -155,15 +155,15 @@ export function buildSettlementWitnesses(bids: BidWitness[]) {
 }
 
 /**
- * Loads the generated contract module (`managed/aegis-bid/contract/index.js`).
+ * Loads the generated V2 contract module (`managed/aegis-bid-v2/contract/index.js`).
  * Throws with next steps when the contract has not been compiled yet.
  */
 export async function loadContractModule(): Promise<unknown> {
   try {
-    return await import("../../../../managed/aegis-bid/contract/index.js");
+    return await import("../../../../managed/aegis-bid-v2/contract/index.js");
   } catch {
     throw new Error(
-      "No generated bindings found at managed/aegis-bid. Compile first: " +
+      "No generated bindings found at managed/aegis-bid-v2. Compile first: " +
         "MIDNIGHT_COMPACT_BIN=<compiler> bun run compact:check " +
         "(see contracts/COMPACT_TOOLCHAIN.md, docs/MIDNIGHT_INTEGRATION.md).",
     );

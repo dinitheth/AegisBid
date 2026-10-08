@@ -68,11 +68,11 @@ describe("midnight contract wiring", () => {
     const witnesses = buildSubmitBidWitnesses({
       amount: 2_450n,
       salt: "salt-b",
-      identitySecret: "id-b",
+      evaluatorSecret: "cap-b",
     });
     expect(witnesses.localBidAmount({ privateState: null })).toEqual([null, 2_450n]);
     expect(witnesses.localBidSalt({ privateState: null })).toEqual([null, "salt-b"]);
-    expect(witnesses.localIdentitySecret({ privateState: null })).toEqual([null, "id-b"]);
+    expect(witnesses.evaluatorSecret({ privateState: null })).toEqual([null, "cap-b"]);
   });
 
   it("builds indexed settlement witnesses", () => {

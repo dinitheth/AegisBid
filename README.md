@@ -2,6 +2,18 @@
 
 AegisBid is a zero-knowledge shielded tender and sealed-bid protocol designed for Midnight Network. It lets an issuer receive binding bids, prove the correct winner, and publish an auditable settlement without exposing losing bids or bidder secrets.
 
+## V2 preprod deployment candidate
+
+`contracts/aegis_bid_v2.compact` is the deployable V2 contract. It intentionally creates a **new contract address**; it does not mutate the historical V1 deployment.
+
+- Bid acceptance and evaluation use Midnight ledger block time, rather than a timestamp provided by the browser.
+- `LowestCompliant` treats `reserve` as a ceiling (`winningAmount <= reserve`); highest-bid mode treats it as a floor.
+- A tender-specific nullifier derives from the contract address and the bidder's stable wallet public key, preventing that wallet from bidding twice on the same tender. It is not a human-identity or Sybil-resistance system.
+- The deployer creates a private 32-byte evaluator capability. Its commitment is public, but the secret is required to start evaluation and settle. The Live deploy page saves it on the deploying browser under `aegisbid-v2-evaluator-secret:<contract-address>`; export/back it up before clearing browser data.
+- V2 settles up to **8 bids** per tender. This is a deliberate proving-key distribution limit: the 64-bid form generated a 153 MB key, while the verified V2 key is ~19.6 MB. Split larger procurements into lots until a batched/recursive proof design is introduced.
+
+Generated V2 bindings and proving assets live in `managed/aegis-bid-v2/`. Validate source shape with `npm run compact:v2:check`; the full key generation was verified with Compact 0.31.1 on the Azure builder VM.
+
 > The browser application in this repository is a deterministic protocol workbench. It demonstrates the intended contract states, privacy boundary, proof lifecycle, settlement outputs, and QA cases locally. It does not claim that the included simulation is a live Midnight deployment.
 
 ## Judge quickstart (Midnight Buildathon, Wave 1)
@@ -69,15 +81,15 @@ The public receipt contains the winner commitment, explicitly disclosed clearing
 
 The production-shaped reference contract is [`contracts/aegis_bid.compact`](contracts/aegis_bid.compact).
 
-| Section | Purpose | Visibility |
-| --- | --- | --- |
-| `TenderConfig` | Deadline, mode, reserve and specification root | Public |
-| `commitments` | Binding hashes of private bids | Public |
-| `nullifiers` | One-submission identity protection | Public |
-| `localBidAmount`, `localBidSalt`, `localIdentitySecret` | Bid witnesses resolved by the DApp | Private |
-| `submitBid` | Deadline, nullifier uniqueness, `persistentCommit` binding circuit | ZK proof |
-| `settle` | Membership, constant-bounded pairwise ordering and reserve/ceiling circuit | ZK proof |
-| `SettlementReceipt` | Winner commitment and explicit public outputs | Public |
+| Section                                                 | Purpose                                                                    | Visibility |
+| ------------------------------------------------------- | -------------------------------------------------------------------------- | ---------- |
+| `TenderConfig`                                          | Deadline, mode, reserve and specification root                             | Public     |
+| `commitments`                                           | Binding hashes of private bids                                             | Public     |
+| `nullifiers`                                            | One-submission identity protection                                         | Public     |
+| `localBidAmount`, `localBidSalt`, `localIdentitySecret` | Bid witnesses resolved by the DApp                                         | Private    |
+| `submitBid`                                             | Deadline, nullifier uniqueness, `persistentCommit` binding circuit         | ZK proof   |
+| `settle`                                                | Membership, constant-bounded pairwise ordering and reserve/ceiling circuit | ZK proof   |
+| `SettlementReceipt`                                     | Winner commitment and explicit public outputs                              | Public     |
 
 Compact is evolving. Pin a compiler release and reconcile syntax with that release before deployment. The contract is intentionally presented as production-shaped reference code rather than a claim of audited, mainnet-ready bytecode.
 
@@ -165,11 +177,11 @@ The repository does not invent a fixed Docker command because `midnight-local-de
 
 The QA runner is deterministic and repeatable:
 
-| Scenario | Expected invariant |
-| --- | --- |
-| Three-party sealed bid | Correct committed winner; losing values absent from receipt |
-| Under-reserve rejection | Settlement constraint fails; state remains unsettled |
-| Post-deadline submission | Submission fails; commitment count is unchanged |
+| Scenario                 | Expected invariant                                          |
+| ------------------------ | ----------------------------------------------------------- |
+| Three-party sealed bid   | Correct committed winner; losing values absent from receipt |
+| Under-reserve rejection  | Settlement constraint fails; state remains unsettled        |
+| Post-deadline submission | Submission fails; commitment count is unchanged             |
 
 For network-level tests, repeat these cases through generated bindings against `midnight-local-dev`, assert both returned values and ledger state, and retain proof-server logs as artifacts.
 
@@ -182,19 +194,20 @@ bun run test         # run once
 bun run test:watch   # watch mode
 ```
 
-| Test file | What it proves |
-| --- | --- |
-| `src/features/aegis/hash.test.ts` | SHA-256 matches FIPS 180-4 vectors, deterministic |
-| `src/features/aegis/tenderEngine.test.ts` | Three-party sealed bid (winner disclosed, losers redacted); under-reserve, post-deadline, duplicate-identity, non-optimal-winner, and incomplete-bid-set rejections; lowest-compliant ceiling mode |
-| `src/features/aegis/storedBids.test.ts` | Legacy stored-bid migration; UI commitments match the protocol engine |
-| `src/features/aegis/evaluator.test.ts` | UI-tender to engine config mapping, stored-bid to witness conversion, adapter `beginEvaluation` + `settle` flow, non-optimal / under-reserve rejections |
-| `src/features/aegis/chain.test.ts` | Default preprod tender, shared links, published-tender validation and merging, indexer activity overlays |
-| `src/features/aegis/wallet.test.ts` | Wallet balance display formatting and invalid-input handling |
-| `src/features/aegis/midnight/contract.test.ts` | Deployment status, Compact constructor mapping, byte conversion, bid and settlement witness builders |
-| `src/features/aegis/midnight/networks.test.ts` | Network identifiers and pinned Midnight endpoint configuration |
-| `src/features/aegis/midnight/oneAmWallet.test.ts` | 1AM/Lace connector discovery, connection timeout, and user-facing wallet errors |
-| `src/features/aegis/midnight/providers.test.ts` | Browser provider construction, ZK artifact path, wallet/proof-server selection, and private-state scoping |
-| `src/features/aegis/midnight/forensics.test.ts` | Failure-forensics diagnostics retain useful partial evidence when transaction assembly fails |
+| Test file                                         | What it proves                                                                                                                                                                                     |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/features/aegis/hash.test.ts`                 | SHA-256 matches FIPS 180-4 vectors, deterministic                                                                                                                                                  |
+| `src/features/aegis/tenderEngine.test.ts`         | Three-party sealed bid (winner disclosed, losers redacted); under-reserve, post-deadline, duplicate-identity, non-optimal-winner, and incomplete-bid-set rejections; lowest-compliant ceiling mode |
+| `src/features/aegis/storedBids.test.ts`           | Legacy stored-bid migration; UI commitments match the protocol engine                                                                                                                              |
+| `src/features/aegis/evaluator.test.ts`            | UI-tender to engine config mapping, stored-bid to witness conversion, adapter `beginEvaluation` + `settle` flow, non-optimal / under-reserve rejections                                            |
+| `src/features/aegis/chain.test.ts`                | Default preprod tender, shared links, published-tender validation and merging, indexer activity overlays                                                                                           |
+| `src/features/aegis/wallet.test.ts`               | Wallet balance display formatting and invalid-input handling                                                                                                                                       |
+| `src/features/aegis/midnight/contract.test.ts`    | Deployment status, Compact constructor mapping, byte conversion, bid and settlement witness builders                                                                                               |
+| `scripts/compact-v2-check.mjs`                    | V2 structural security gate: ledger time, evaluator capability, wallet nullifier, ceiling/floor and 8-bid bound                                                                                    |
+| `src/features/aegis/midnight/networks.test.ts`    | Network identifiers and pinned Midnight endpoint configuration                                                                                                                                     |
+| `src/features/aegis/midnight/oneAmWallet.test.ts` | 1AM/Lace connector discovery, connection timeout, and user-facing wallet errors                                                                                                                    |
+| `src/features/aegis/midnight/providers.test.ts`   | Browser provider construction, ZK artifact path, wallet/proof-server selection, and private-state scoping                                                                                          |
+| `src/features/aegis/midnight/forensics.test.ts`   | Failure-forensics diagnostics retain useful partial evidence when transaction assembly fails                                                                                                       |
 
 Negative tests verify that rejected operations do not mutate state. Cases map
 directly to the contract invariants (`tenderEngine.ts` mirrors

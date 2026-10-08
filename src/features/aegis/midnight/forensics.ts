@@ -41,11 +41,10 @@ export async function diagnoseCallAssembly(
   witnesses: {
     amount: bigint;
     salt: Uint8Array;
-    identitySecret: Uint8Array;
     bidderKey: Uint8Array;
+    evaluatorSecret?: Uint8Array;
   },
   bidderKey: Uint8Array,
-  nowSec: bigint,
 ): Promise<string> {
   const notes: string[] = [];
   try {
@@ -95,7 +94,7 @@ export async function diagnoseCallAssembly(
         contractAddress,
         coinPublicKey: coinHex === "" ? "ab".repeat(32) : coinHex,
         circuitId: "submitBid",
-        args: [bidderKey, nowSec],
+        args: [bidderKey],
         initialContractState: states.contractState,
         initialZswapChainState: states.zswapChainState,
         ledgerParameters: states.ledgerParameters,
@@ -130,8 +129,8 @@ export async function diagnoseCallAssembly(
     );
   }
   notes.push(
-    `witnesses=amount:${typeof witnesses.amount},salt:${witnesses.salt?.length}B,identity:${witnesses.identitySecret?.length}B,key:${witnesses.bidderKey?.length}B`,
-    `args=key:${bidderKey?.length}B,now:${typeof nowSec}`,
+    `witnesses=amount:${typeof witnesses.amount},salt:${witnesses.salt?.length}B,key:${witnesses.bidderKey?.length}B,evaluator:${witnesses.evaluatorSecret?.length ?? 0}B`,
+    `args=key:${bidderKey?.length}B`,
   );
   return notes.join(" | ");
 }

@@ -5,7 +5,6 @@ import type { OneAmConnectedApi } from "./oneAmWallet";
 const witnesses = {
   amount: 1200n,
   salt: new Uint8Array(32).fill(7),
-  identitySecret: new Uint8Array(32).fill(9),
   bidderKey: new Uint8Array(32).fill(5),
 };
 
@@ -26,7 +25,6 @@ describe("diagnoseCallAssembly", () => {
       "0279d0b045d7c8a244b3f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8",
       witnesses,
       new Uint8Array(32).fill(5),
-      1n,
     );
     // Key shapes are reported, the throw is captured, and the witness/arg
     // shapes still append (no early return dropping notes).
@@ -34,6 +32,6 @@ describe("diagnoseCallAssembly", () => {
     expect(out).toContain("encKey=number");
     expect(out).toContain("diag-threw=boom-config");
     expect(out).toContain("witnesses=amount:bigint");
-    expect(out).toContain("args=key:32B,now:bigint");
+    expect(out).toContain("args=key:32B");
   });
 });

@@ -14,15 +14,19 @@ import { setNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
 import { FetchZkConfigProvider } from "@midnight-ntwrk/midnight-js-fetch-zk-config-provider";
 import { indexerPublicDataProvider } from "@midnight-ntwrk/midnight-js-indexer-public-data-provider";
 import { CompiledContract } from "@midnight-ntwrk/compact-js";
-import { deployContract, findDeployedContract, submitCallTx } from "@midnight-ntwrk/midnight-js-contracts";
-import { Contract, TenderMode } from "../../../../managed/aegis-bid/contract/index.js";
+import {
+  deployContract,
+  findDeployedContract,
+  submitCallTx,
+} from "@midnight-ntwrk/midnight-js-contracts";
+import { Contract, TenderMode } from "../../../../managed/aegis-bid-v2/contract/index.js";
 import { hexToBytes, stringToBytes32 } from "./contract";
 import type { OneAmConnectedApi } from "./oneAmWallet";
 import * as forensicsModule from "./forensics";
 
 export const ZK_BASE =
   (import.meta.env["VITE_ZK_CONFIG_BASE"] as string | undefined) ||
-  "https://cdn.jsdelivr.net/gh/dinitheth/AegisBid@main/managed/aegis-bid";
+  "https://cdn.jsdelivr.net/gh/dinitheth/AegisBid@main/managed/aegis-bid-v2";
 
 export const bytesToHex = (bytes: Uint8Array) =>
   Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
@@ -30,8 +34,9 @@ export const bytesToHex = (bytes: Uint8Array) =>
 export type PrivateBidWitnesses = {
   amount: bigint;
   salt: Uint8Array;
-  identitySecret: Uint8Array;
   bidderKey: Uint8Array;
+  /** Deployment/evaluation capability. Keep this private and back it up. */
+  evaluatorSecret?: Uint8Array;
 };
 
 /**
@@ -171,8 +176,8 @@ export async function buildConnectorBase(api: OneAmConnectedApi, bid?: PrivateBi
 
   const amount = bid?.amount ?? 0n;
   const salt = bid?.salt ?? new Uint8Array(32);
-  const identitySecret = bid?.identitySecret ?? new Uint8Array(32);
   const bidderKey = bid?.bidderKey ?? new Uint8Array(32);
+  const evaluatorSecret = bid?.evaluatorSecret ?? new Uint8Array(32);
   // The SDK's withWitnesses conditional types cannot infer through this call
   // shape (its witnesses parameter collapses to `never` no matter how the
   // object is typed — verified against the .d.ts). The object below is still
@@ -183,12 +188,12 @@ export async function buildConnectorBase(api: OneAmConnectedApi, bid?: PrivateBi
     CompiledContract.withWitnesses(CompiledContract.make("aegisbid", Contract), {
       localBidAmount: ({ privateState }: AnyWitnessContext) => [privateState, amount],
       localBidSalt: ({ privateState }: AnyWitnessContext) => [privateState, salt],
-      localIdentitySecret: ({ privateState }: AnyWitnessContext) => [privateState, identitySecret],
+      evaluatorSecret: ({ privateState }: AnyWitnessContext) => [privateState, evaluatorSecret],
       settlementBid: ({ privateState }: AnyWitnessContext) => [privateState, amount],
       settlementSalt: ({ privateState }: AnyWitnessContext) => [privateState, salt],
       settlementKey: ({ privateState }: AnyWitnessContext) => [privateState, bidderKey],
     }),
-    "./managed/aegis-bid",
+    "./managed/aegis-bid-v2",
   );
   return {
     config,
@@ -330,7 +335,6 @@ export async function submitLiveBid(input: {
   contractAddress: string;
   witnesses: PrivateBidWitnesses;
   bidderKey: Uint8Array;
-  nowSec: bigint;
   /** Lace uses wallet-or-proof-server proving; 1AM always delegates to the wallet. */
   walletKind?: "lace" | "1am";
   proofServerUrl?: string;
@@ -370,7 +374,7 @@ export async function submitLiveBid(input: {
 
   try {
     // Use high-level contract API (matches RPS sample pattern)
-    const result = await (foundContract.callTx as any)["submitBid"](input.bidderKey, input.nowSec);
+    const result = await (foundContract.callTx as any)["submitBid"](input.bidderKey);
     const pub = result as { txHash?: string; txId?: string };
     return pub.txHash ?? pub.txId ?? "";
   } catch (cause) {
@@ -386,7 +390,6 @@ export async function submitLiveBid(input: {
         input.contractAddress,
         input.witnesses,
         input.bidderKey,
-        input.nowSec,
       );
     } catch (diagError) {
       forensics = `forensics-failed: ${diagError instanceof Error ? diagError.message.slice(0, 120) : String(diagError).slice(0, 120)}`;

@@ -9,7 +9,7 @@
  * Docker: `VITE_PROOF_SERVER_URL`, default `http://127.0.0.1:6300`).
  *
  * ZK artifacts come from `VITE_ZK_CONFIG_BASE` (default: jsDelivr for the
- * committed `managed/aegis-bid` outputs).
+ * committed `managed/aegis-bid-v2` outputs).
  */
 import { ensureBrowserBuffer } from "./polyfills";
 import { useEffect, useState } from "react";
@@ -218,13 +218,27 @@ export function DeployPage() {
       step = "connecting providers";
       setPublishStatus("Downloading proving keys (one-time, ~14 MB)...");
       const walletLabel = info?.walletName === "Lace" ? "Lace" : "1AM";
-      const [{ buildLaceProviders, buildOneAmProviders, toBindingTenderConfig }, { deployContract }] =
-        await Promise.all([
-          import("./providers"),
-          import("@midnight-ntwrk/midnight-js-contracts"),
-        ]);
+      // V2 stores a commitment to this capability, not the capability itself.
+      // It is required to move a tender into evaluation or settle it, so keep
+      // a local recovery copy keyed by the deployed address below.
+      const evaluatorSecret = crypto.getRandomValues(new Uint8Array(32));
+      const deploymentWitnesses = {
+        amount: 0n,
+        salt: new Uint8Array(32),
+        bidderKey: new Uint8Array(32),
+        evaluatorSecret,
+      };
+      const [
+        { buildLaceProviders, buildOneAmProviders, toBindingTenderConfig, bytesToHex },
+        { deployContract },
+      ] = await Promise.all([
+        import("./providers"),
+        import("@midnight-ntwrk/midnight-js-contracts"),
+      ]);
       const { providers, compiled, provingVia } = await withRetry("connecting providers", () =>
-        walletLabel === "Lace" ? buildLaceProviders(api) : buildOneAmProviders(api),
+        walletLabel === "Lace"
+          ? buildLaceProviders(api, deploymentWitnesses)
+          : buildOneAmProviders(api, deploymentWitnesses),
       );
       if (provingVia === "proof-server") {
         setPublishStatus("Wallet delegates proving: using your local proof server...");
@@ -247,6 +261,10 @@ export function DeployPage() {
         args: [ledgerConfig],
       } as never);
       const address: string = deployed.deployTxData.public.contractAddress;
+      window.localStorage.setItem(
+        `aegisbid-v2-evaluator-secret:${address}`,
+        bytesToHex(evaluatorSecret),
+      );
       setContractAddress(address);
       const record: PublishedTender = {
         address,

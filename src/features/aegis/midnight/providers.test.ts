@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CompiledContract } from "@midnight-ntwrk/compact-js";
-import { Contract } from "../../../../managed/aegis-bid/contract/index.js";
+import { Contract } from "../../../../managed/aegis-bid-v2/contract/index.js";
 import {
   ZK_BASE,
   buildLaceProviders,
@@ -34,7 +34,7 @@ function mockConnectorApi(proving: "wallet" | "reject"): OneAmConnectedApi {
 
 describe("midnight providers", () => {
   it("points ZK artifacts at the committed bindings by default", () => {
-    expect(ZK_BASE).toContain("managed/aegis-bid");
+    expect(ZK_BASE).toContain("managed/aegis-bid-v2");
   });
 
   it("round-trips bytes through hex", () => {
@@ -77,7 +77,7 @@ describe("midnight providers", () => {
           privateState,
           new Uint8Array(32).fill(7),
         ],
-        localIdentitySecret: ({ privateState }: AnyWitnessContext) => [
+        evaluatorSecret: ({ privateState }: AnyWitnessContext) => [
           privateState,
           new Uint8Array(32).fill(9),
         ],
@@ -91,7 +91,7 @@ describe("midnight providers", () => {
           new Uint8Array(32).fill(3),
         ],
       }),
-      "./managed/aegis-bid",
+      "./managed/aegis-bid-v2",
     );
     expect(compiled).toBeDefined();
   });
