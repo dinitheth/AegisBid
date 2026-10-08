@@ -182,7 +182,7 @@ export function friendlyWalletError(cause: unknown): string {
     return "1AM timed out before it could show the approval request. No bid was sent. Confirm the wallet is synced, then retry once.";
   }
   if (/mismatched verifier|verifier keys|operations:.*undefined|contractstate/i.test(raw)) {
-    return "This tender's proof configuration is not ready in the wallet yet. No bid was sent. Refresh the tender once, wait for 1AM to finish syncing, then try again.";
+    return "This tender's network proof configuration could not be verified. No bid was sent.";
   }
   if (/expected instance of|scoped transaction|failed to balance/i.test(raw)) {
     return "The wallet could not prepare this private transaction. No bid was sent. Refresh once, confirm 1AM is synced, then try again.";

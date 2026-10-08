@@ -110,9 +110,7 @@ describe("friendlyWalletError", () => {
           "Following operations: submitBid, beginEvaluation, settle, are undefined or have mismatched verifier keys for contract state ContractState (Array(6))",
         ),
       ),
-    ).toBe(
-      "This tender's proof configuration is not ready in the wallet yet. No bid was sent. Refresh the tender once, wait for 1AM to finish syncing, then try again.",
-    );
+    ).toBe("This tender's network proof configuration could not be verified. No bid was sent.");
   });
 
   it("hides extension internals behind a generic message", () => {

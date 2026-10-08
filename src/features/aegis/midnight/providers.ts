@@ -14,11 +14,7 @@ import { setNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
 import { FetchZkConfigProvider } from "@midnight-ntwrk/midnight-js-fetch-zk-config-provider";
 import { indexerPublicDataProvider } from "@midnight-ntwrk/midnight-js-indexer-public-data-provider";
 import { CompiledContract } from "@midnight-ntwrk/compact-js";
-import {
-  deployContract,
-  findDeployedContract,
-  submitCallTx,
-} from "@midnight-ntwrk/midnight-js-contracts";
+import { deployContract, submitCallTx } from "@midnight-ntwrk/midnight-js-contracts";
 import { Contract, TenderMode } from "../../../../managed/aegis-bid-v2/contract/index.js";
 import { hexToBytes, stringToBytes32 } from "./contract";
 import type { OneAmConnectedApi } from "./oneAmWallet";
@@ -382,21 +378,32 @@ export async function submitLiveBid(input: {
     mySalt: new Uint8Array(32),
   };
 
-  // Use high-level contract API (like RPS sample) instead of raw submitCallTx.
-  // This correctly handles ChargedState/StateValue wrapping.
-  const { findDeployedContract } = await import("@midnight-ntwrk/midnight-js-contracts");
-  const foundContract = await findDeployedContract(providers, {
-    compiledContract: compiled,
-    contractAddress: input.contractAddress,
-    privateStateId: AegisBidPrivateStateId,
-    initialPrivateState,
-  });
-
   try {
-    // Use high-level contract API (matches RPS sample pattern)
-    const result = await (foundContract.callTx as any)["submitBid"](input.bidderKey);
-    const pub = result as { txHash?: string; txId?: string };
-    return pub.txHash ?? pub.txId ?? "";
+    // `findDeployedContract` first runs a verifier-key identity comparison.
+    // On the public preprod contract those keys are valid, but 1AM's
+    // extension can hand the SDK a stale cached representation of that state
+    // and reject before it ever creates a proof or opens its approval UI.
+    // Build the call through the supported SDK submit path instead: it obtains
+    // current public state, produces a proof with the immutable V2 assets, and
+    // submits only after the wallet approves it.
+    const privateStateProvider = providers.privateStateProvider as {
+      setContractAddress(address: string): void;
+      set(privateStateId: string, state: unknown): Promise<void>;
+    };
+    privateStateProvider.setContractAddress(input.contractAddress);
+    await privateStateProvider.set(AegisBidPrivateStateId, initialPrivateState);
+    const result = await submitCallTx(providers, {
+      compiledContract: compiled,
+      contractAddress: input.contractAddress,
+      circuitId: "submitBid",
+      privateStateId: AegisBidPrivateStateId,
+      args: [input.bidderKey],
+      // The SDK's generated circuit option inference cannot express the
+      // V2 witness literal; its runtime shape is covered by our provider
+      // integration tests.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    return result.public.txId;
   } catch (cause) {
     // Attach assembly forensics so the Technical details box shows WHAT was
     // malformed, not just that the merge rejected it. Read-only: no wallet
