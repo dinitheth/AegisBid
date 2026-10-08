@@ -594,6 +594,7 @@ function BidPage({
   const [agreed, setAgreed] = useState(false);
   const [sending, setSending] = useState(false);
   const [stage, setStage] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
   const [failure, setFailure] = useState<string | null>(null);
   const [failureDetail, setFailureDetail] = useState<string | null>(null);
   const oneAm = useOneAmWallet();
@@ -609,6 +610,23 @@ function BidPage({
     const timer = window.setTimeout(preloadBidTransactionStack, 0);
     return () => window.clearTimeout(timer);
   }, []);
+  // The wallet connector does not expose internal proof-generation progress.
+  // This bounded indicator advances through browser work, then holds at 92%
+  // while 1AM prepares the approval request.
+  useEffect(() => {
+    if (!sending) return;
+    const timer = window.setInterval(() => {
+      setProgress((current) => {
+        if (current >= 92) return current;
+        const next = Math.min(92, current + (current < 42 ? 4 : current < 76 ? 2 : 1));
+        if (next >= 78) setStage("Waiting for 1AM approval...");
+        else if (next >= 44) setStage("Generating your sealed proof...");
+        else if (next >= 22) setStage("Loading secure proof tools...");
+        return next;
+      });
+    }, 700);
+    return () => window.clearInterval(timer);
+  }, [sending]);
   // Empty wallets die later with a cryptic ledger error — warn up front.
   const noDust = (() => {
     try {
@@ -626,6 +644,7 @@ function BidPage({
     setSending(true);
     setFailure(null);
     setFailureDetail(null);
+    setProgress(6);
     const submittedAt = Date.now();
     // Binding commitment via the protocol engine (SHA-256 over amount:salt:key),
     // matching the `submitBid` commitment model in contracts/aegis_bid.compact.
@@ -668,12 +687,16 @@ function BidPage({
         return;
       }
       try {
-        setStage("Preparing secure transaction...");
+        setStage("Checking tender and wallet...");
+        setProgress(14);
         ensureBrowserBuffer();
         // Dynamic import: the provider stack pulls WASM-backed modules that
         // must never evaluate during SSR.
         const { submitLiveBid } = await import("./midnight/providers");
-        setStage(`Submitting sealed bid on preprod (approve in ${liveLabel})`);
+        setStage("Loading secure proof tools...");
+        setProgress(30);
+        setStage(`Generating your sealed proof (then approve in ${liveLabel})...`);
+        setProgress(46);
         const txHash = await submitLiveBid({
           api: liveApi,
           contractAddress: liveContract,
@@ -685,6 +708,9 @@ function BidPage({
           bidderKey: stringToBytes32(bidderKey),
           walletKind: liveKind,
         });
+        setStage("Offer submitted");
+        setProgress(100);
+        await new Promise((resolve) => window.setTimeout(resolve, 450));
         onSubmit({
           ...base,
           receipt: txHash,
@@ -707,17 +733,20 @@ function BidPage({
     }
     try {
       setStage("Sealing your offer on this device");
+      setProgress(25);
       await new Promise((resolve) => window.setTimeout(resolve, 500));
       if (new Date(tender.deadline).getTime() <= submittedAt) {
         throw new Error("Bidding for this tender has already closed.");
       }
       setStage("Creating the privacy proof");
+      setProgress(55);
       await new Promise((resolve) => window.setTimeout(resolve, 700));
       let onChain = false;
       let receipt = commitment;
       const chainConfig = getChainConfig();
       if (wallet.api?.submitTransaction && isConfigured(chainConfig)) {
         setStage("Waiting for wallet confirmation");
+        setProgress(82);
         const request = {
           contract: chainConfig.contractAddress,
           circuit: "submitBid",
@@ -730,6 +759,9 @@ function BidPage({
         onChain = true;
         await wallet.refresh();
       }
+      setStage("Offer submitted");
+      setProgress(100);
+      await new Promise((resolve) => window.setTimeout(resolve, 450));
       onSubmit({
         ...base,
         receipt,
@@ -861,16 +893,35 @@ function BidPage({
           </label>
           <Button
             size="lg"
-            className="mt-6 w-full"
+            className="relative mt-6 w-full overflow-hidden"
             disabled={!amount || !agreed || sending || !enough || biddingClosed || legacyTender}
             onClick={() => void submit()}
+            aria-live="polite"
+            aria-label={
+              sending
+                ? `${stage ?? "Preparing secure offer"}. ${progress}% complete.`
+                : legacyTender
+                  ? "V2 tender required"
+                  : "Submit private offer"
+            }
           >
-            {sending
-              ? (stage ?? "Working...")
-              : legacyTender
-                ? "V2 tender required"
-                : "Submit private offer"}
-            <LockKeyhole />
+            {sending && (
+              <span
+                className="absolute inset-y-0 left-0 bg-primary-foreground/20 transition-[width] duration-500 ease-out"
+                style={{ width: `${progress}%` }}
+                aria-hidden="true"
+              />
+            )}
+            <span className="relative z-10 flex min-w-0 items-center gap-2">
+              <span className="truncate">
+                {sending
+                  ? `${progress}% · ${stage ?? "Preparing secure offer..."}`
+                  : legacyTender
+                    ? "V2 tender required"
+                    : "Submit private offer"}
+              </span>
+              <LockKeyhole />
+            </span>
           </Button>
           {failure && (
             <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
