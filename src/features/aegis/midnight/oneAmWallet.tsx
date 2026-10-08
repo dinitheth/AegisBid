@@ -109,6 +109,23 @@ export function detectLace(): OneAmInitialApi | null {
 // full-page UI then shows "Wallet init timed out ... serverSideScan=true").
 // Never wait forever: callers surface a clear message instead.
 export const CONNECT_TIMEOUT_MS = 90_000;
+export const WALLET_DETAILS_TIMEOUT_MS = 20_000;
+
+function withTimeout<T>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = globalThis.setTimeout(() => reject(new Error(message)), timeoutMs);
+    operation.then(
+      (value) => {
+        globalThis.clearTimeout(timer);
+        resolve(value);
+      },
+      (cause) => {
+        globalThis.clearTimeout(timer);
+        reject(cause);
+      },
+    );
+  });
+}
 
 /**
  * Connects a detected wallet with a timeout, returning the connected API
@@ -118,27 +135,23 @@ export const CONNECT_TIMEOUT_MS = 90_000;
 export async function connectDetectedWallet(
   entry: DetectedWallet,
 ): Promise<{ api: OneAmConnectedApi; info: WalletInfo }> {
-  const connected = (await Promise.race([
+  const connected = await withTimeout(
     entry.initial.connect("preprod"),
-    new Promise<never>((_, reject) =>
-      globalThis.setTimeout(
-        () =>
-          reject(
-            new Error(
-              `${entry.label} did not respond in 90s. The wallet extension itself may be stuck ` +
-                "initializing (its page shows a vault/scan timeout when its backend is " +
-                "unreachable). Check your connection, reload the extension, then try again.",
-            ),
-          ),
-        CONNECT_TIMEOUT_MS,
-      ),
-    ),
-  ])) as Awaited<ReturnType<OneAmInitialApi["connect"]>>;
-  const [config, unshielded, dust] = await Promise.all([
-    connected.getConfiguration(),
-    connected.getUnshieldedAddress(),
-    connected.getDustBalance(),
-  ]);
+    CONNECT_TIMEOUT_MS,
+    `${entry.label} did not respond in 90s. The wallet extension itself may be stuck ` +
+      "initializing (its page shows a vault/scan timeout when its backend is " +
+      "unreachable). Check your connection, reload the extension, then try again.",
+  );
+  const [config, unshielded, dust] = await withTimeout(
+    Promise.all([
+      connected.getConfiguration(),
+      connected.getUnshieldedAddress(),
+      connected.getDustBalance(),
+    ]),
+    WALLET_DETAILS_TIMEOUT_MS,
+    `${entry.label} connected but did not return account details in 20s. Unlock the wallet, ` +
+      "reload its extension, then try again.",
+  );
   return {
     api: connected,
     info: {
@@ -225,23 +238,11 @@ export function OneAmWalletProvider({ children }: { children: ReactNode }) {
     const wallets = detectWalletConnectors();
     const found = wallets[0];
     if (!found) return;
-    void found.initial
-      .connect("preprod")
-      .then(async (connected) => {
-        if (cancelled) return;
-        const [config, unshielded, dust] = await Promise.all([
-          connected.getConfiguration(),
-          connected.getUnshieldedAddress(),
-          connected.getDustBalance(),
-        ]);
+    void connectDetectedWallet(found)
+      .then(({ api: connected, info: connectedInfo }) => {
         if (cancelled) return;
         setApi(connected);
-        setInfo({
-          networkId: config.networkId,
-          unshieldedAddress: unshielded.unshieldedAddress,
-          dustBalance: String(dust.balance),
-          walletName: found.label,
-        });
+        setInfo(connectedInfo);
       })
       .catch(() => writeFlag(false));
     return () => {

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CONNECT_TIMEOUT_MS,
+  WALLET_DETAILS_TIMEOUT_MS,
   connectDetectedWallet,
   friendlyWalletError,
   type DetectedWallet,
@@ -43,8 +44,28 @@ describe("connectDetectedWallet", () => {
       initial: { connect: () => new Promise<OneAmInitialApi>(() => {}) },
     } as unknown as DetectedWallet;
     const pending = connectDetectedWallet(entry);
+    const rejected = expect(pending).rejects.toThrow("did not respond in 90s");
     vi.advanceTimersByTime(CONNECT_TIMEOUT_MS);
-    await expect(pending).rejects.toThrow("did not respond in 90s");
+    await rejected;
+  });
+
+  it("times out when a connected wallet never returns account details", async () => {
+    vi.useFakeTimers();
+    const connected = {
+      getConfiguration: () => new Promise(() => {}),
+      getUnshieldedAddress: () => new Promise(() => {}),
+      getDustBalance: () => new Promise(() => {}),
+    };
+    const entry = {
+      kind: "1am",
+      key: "1am",
+      label: "1AM",
+      initial: { connect: async () => connected },
+    } as unknown as DetectedWallet;
+    const pending = connectDetectedWallet(entry);
+    const rejected = expect(pending).rejects.toThrow("did not return account details in 20s");
+    await vi.advanceTimersByTimeAsync(WALLET_DETAILS_TIMEOUT_MS);
+    await rejected;
   });
 });
 

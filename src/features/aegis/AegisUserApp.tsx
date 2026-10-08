@@ -2077,18 +2077,18 @@ export function AegisUserApp() {
   return (
     <OneAmWalletProvider>
       <main className="min-h-screen bg-background text-foreground">
-        <header className="fixed inset-x-0 top-0 z-40 px-3 pt-3 sm:px-5 sm:pt-4">
-          <div className="notch-navbar mx-auto max-w-7xl">
-            <div className="flex h-16 items-center justify-between gap-3 px-3 sm:px-5">
+        <header className="fixed inset-x-0 top-0 z-40 px-2 pt-2 sm:px-5 sm:pt-4">
+          <div className="notch-navbar mx-auto w-full max-w-7xl">
+            <div className="grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-2 sm:gap-3 sm:px-5">
               <Brand onClick={() => navigate("home")} />
               <nav
-                className="hidden h-full items-center gap-1 xl:flex"
+                className="hidden min-w-0 items-center justify-center gap-0.5 min-[1280px]:flex"
                 aria-label="Main navigation"
               >
                 {navItems.map((item) => (
                   <Button
                     key={item.id}
-                    className={`notch-nav-item h-10 rounded-lg px-3 ${page === item.id ? "is-active" : ""}`}
+                    className={`notch-nav-item h-10 shrink-0 rounded-lg px-2.5 text-[13px] min-[1440px]:px-3 ${page === item.id ? "is-active" : ""}`}
                     variant="ghost"
                     onClick={() => navigate(item.id)}
                     aria-current={page === item.id ? "page" : undefined}
@@ -2102,7 +2102,7 @@ export function AegisUserApp() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="xl:hidden"
+                  className="min-[1280px]:hidden"
                   onClick={() => setMenuOpen((value) => !value)}
                   aria-label={menuOpen ? "Close navigation" : "Open navigation"}
                 >
@@ -2112,7 +2112,7 @@ export function AegisUserApp() {
             </div>
             {menuOpen && (
               <nav
-                className="grid gap-1 border-t border-border p-3 xl:hidden"
+                className="absolute inset-x-0 top-[calc(100%+0.5rem)] grid gap-1 rounded-xl border border-border bg-card p-2 shadow-lg min-[1280px]:hidden"
                 aria-label="Mobile navigation"
               >
                 {navItems.map((item) => (

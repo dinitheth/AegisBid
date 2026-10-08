@@ -90,11 +90,14 @@ export function DeployPage() {
   const [reserve, setReserve] = useState(sample.reserve);
   const [mode, setMode] = useState<"highest" | "lowest">(sample.mode);
   const [spec, setSpec] = useState(sample.spec);
-  const [status, setStatus] = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<string | null>(null);
+  const [publishStatus, setPublishStatus] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [failureDetail, setFailureDetail] = useState<string | null>(null);
+  const [failureArea, setFailureArea] = useState<"connection" | "publish" | null>(null);
   const [contractAddress, setContractAddress] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [copied, setCopied] = useState(false);
 
   // Keep this screen lightweight. The provider module imports the Midnight
@@ -156,29 +159,37 @@ export function DeployPage() {
   const connect = async (kind: WalletKind) => {
     const entry = wallets.find((item) => item.kind === kind);
     if (!entry) return;
-    setBusy(true);
+    if (publishing) return;
+    setConnecting(true);
     setFailure(null);
     setFailureDetail(null);
+    setFailureArea(null);
     try {
-      setStatus(`Waiting for ${entry.label} approval...`);
+      setConnectionStatus(
+        `Waiting for ${entry.label} approval. Check the wallet extension or its tab — this will stop automatically if it does not respond.`,
+      );
       const { api: connectedApi, info } = await connectDetectedWallet(entry);
       setConnected(connectedApi, info);
-      setStatus(null);
+      setConnectionStatus(null);
     } catch (cause) {
       setFailure(friendlyWalletError(cause));
+      setFailureArea("connection");
       const detail = cause instanceof Error ? (cause.stack ?? cause.message) : String(cause);
       setFailureDetail(detail.slice(0, 800));
     } finally {
-      setBusy(false);
+      setConnecting(false);
     }
   };
 
   const deploy = async () => {
     if (!api) return;
     ensureBrowserBuffer();
-    setBusy(true);
+    if (connecting) return;
+    setPublishing(true);
     setFailure(null);
     setFailureDetail(null);
+    setFailureArea(null);
+    setPublishStatus(null);
     setContractAddress(null);
     let step = "starting";
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -197,7 +208,7 @@ export function DeployPage() {
           ) {
             throw new Error(`${label}: ${message}`);
           }
-          setStatus(`Rate-limited during ${label} — retry ${attempt}/3...`);
+          setPublishStatus(`Rate-limited during ${label} — retry ${attempt}/3...`);
           await sleep(attempt * 4000);
         }
       }
@@ -205,7 +216,7 @@ export function DeployPage() {
     };
     try {
       step = "connecting providers";
-      setStatus("Downloading proving keys (one-time, ~14 MB)...");
+      setPublishStatus("Downloading proving keys (one-time, ~14 MB)...");
       const walletLabel = info?.walletName === "Lace" ? "Lace" : "1AM";
       const [{ buildLaceProviders, buildOneAmProviders, toBindingTenderConfig }, { deployContract }] =
         await Promise.all([
@@ -216,11 +227,11 @@ export function DeployPage() {
         walletLabel === "Lace" ? buildLaceProviders(api) : buildOneAmProviders(api),
       );
       if (provingVia === "proof-server") {
-        setStatus("Wallet delegates proving: using your local proof server...");
+        setPublishStatus("Wallet delegates proving: using your local proof server...");
       }
 
       step = "building the deployment transaction";
-      setStatus("Building the deployment transaction...");
+      setPublishStatus("Building the deployment transaction...");
       const ledgerConfig = toBindingTenderConfig({
         issuer,
         deadlineSec: BigInt(Math.floor(new Date(deadline).getTime() / 1000)),
@@ -230,7 +241,7 @@ export function DeployPage() {
       });
 
       step = `proving via ${walletLabel} (approve in the wallet)`;
-      setStatus(`Proving via ${walletLabel} (approve in the wallet)...`);
+      setPublishStatus(`Proving via ${walletLabel} (approve in the wallet)...`);
       const deployed = await deployContract(providers, {
         compiledContract: compiled,
         args: [ledgerConfig],
@@ -268,7 +279,7 @@ export function DeployPage() {
         setMode(upcoming.mode);
         setDeadline(defaultDeadlineInput());
       }
-      setStatus(null);
+      setPublishStatus(null);
     } catch (cause) {
       // Full technical detail stays in the console; the screen gets one
       // plain sentence.
@@ -278,10 +289,11 @@ export function DeployPage() {
         ? " Public services are busy — wait a minute and retry."
         : "";
       setFailure(`Could not publish. ${friendly}${hint}`);
+      setFailureArea("publish");
       const detail = cause instanceof Error ? (cause.stack ?? cause.message) : String(cause);
       setFailureDetail(detail.slice(0, 800));
     } finally {
-      setBusy(false);
+      setPublishing(false);
     }
   };
 
@@ -338,11 +350,31 @@ export function DeployPage() {
         ) : (
           <div className="mt-4 flex flex-wrap gap-3">
             {wallets.map((entry) => (
-              <Button key={entry.kind} onClick={() => void connect(entry.kind)} disabled={busy}>
-                {busy ? "Waiting..." : `Connect ${entry.label} (preprod)`}
+              <Button
+                key={entry.kind}
+                onClick={() => void connect(entry.kind)}
+                disabled={connecting || publishing}
+              >
+                {connecting ? "Waiting for wallet..." : `Connect ${entry.label} (preprod)`}
               </Button>
             ))}
           </div>
+        )}
+        {connectionStatus && (
+          <p className="mt-3 text-sm text-muted-foreground">{connectionStatus}</p>
+        )}
+        {failureArea === "connection" && failure && (
+          <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+            {failure}
+          </p>
+        )}
+        {failureArea === "connection" && failureDetail && (
+          <details className="mt-2 text-xs text-card-foreground/60">
+            <summary className="cursor-pointer underline">Technical details</summary>
+            <pre className="mt-1 whitespace-pre-wrap break-all rounded-md border border-border bg-muted/40 p-3 font-mono">
+              {failureDetail}
+            </pre>
+          </details>
         )}
       </section>
 
@@ -399,19 +431,21 @@ export function DeployPage() {
       <section className="mt-6 rounded-lg border border-border bg-section p-6">
         <h2 className="font-display text-xl font-semibold text-foreground">3 · Publish</h2>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button size="lg" onClick={() => void deploy()} disabled={!api || busy || !deadline}>
-            {busy ? (status ?? "Working...") : "Publish opportunity"}
+          <Button
+            size="lg"
+            onClick={() => void deploy()}
+            disabled={!api || connecting || publishing || !deadline}
+          >
+            {publishing ? (publishStatus ?? "Working...") : "Publish opportunity"}
           </Button>
         </div>
-        {status && !busy
-          ? null
-          : status && <p className="mt-3 text-sm text-muted-foreground">{status}</p>}
-        {failure && (
+        {publishStatus && <p className="mt-3 text-sm text-muted-foreground">{publishStatus}</p>}
+        {failureArea === "publish" && failure && (
           <p className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
             {failure}
           </p>
         )}
-        {failureDetail && (
+        {failureArea === "publish" && failureDetail && (
           <details className="mt-2 text-xs text-card-foreground/60">
             <summary className="cursor-pointer underline">Technical details</summary>
             <pre className="mt-1 whitespace-pre-wrap break-all rounded-md border border-border bg-muted/40 p-3 font-mono">
