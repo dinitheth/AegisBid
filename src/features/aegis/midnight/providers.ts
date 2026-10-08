@@ -113,6 +113,8 @@ export type WalletOperationReporter = (message: string) => void;
 // can retry without risking a duplicate deployment or bid.
 const PROVING_TIMEOUT_MS = 120_000;
 const PROVING_PROVIDER_TIMEOUT_MS = 30_000;
+const WALLET_BALANCE_TIMEOUT_MS = 45_000;
+const WALLET_SUBMIT_TIMEOUT_MS = 90_000;
 
 // 1AM validates the proving configuration when getProvingProvider is called.
 // Calling it again for every bid asks the extension to repeat that fragile
@@ -219,7 +221,11 @@ export async function buildConnectorBase(
     getEncryptionPublicKey: () => keys.shieldedEncryptionPublicKey,
     async balanceTx(tx: { serialize: () => Uint8Array }) {
       report?.("Preparing the transaction with 1AM...");
-      const result = await api.balanceUnsealedTransaction(bytesToHex(tx.serialize()));
+      const result = await withSafeTimeout(
+        api.balanceUnsealedTransaction(bytesToHex(tx.serialize())),
+        WALLET_BALANCE_TIMEOUT_MS,
+        "1AM did not finish preparing the transaction in 45 seconds. No transaction was sent. Reload the 1AM extension before retrying.",
+      );
       const { Transaction } = await import("@midnight-ntwrk/ledger-v8");
       return Transaction.deserialize("signature", "proof", "binding", hexToBytes(result.tx));
     },
@@ -229,7 +235,11 @@ export async function buildConnectorBase(
       // This is the first point at which 1AM can present a signing/approval
       // request. Do not tell users to approve while a proof is still running.
       report?.("Proof ready — approve the transaction in 1AM...");
-      await api.submitTransaction(bytesToHex(tx.serialize()));
+      await withSafeTimeout(
+        api.submitTransaction(bytesToHex(tx.serialize())),
+        WALLET_SUBMIT_TIMEOUT_MS,
+        "1AM did not confirm the submitted transaction in 90 seconds. Check the 1AM activity list before retrying so you do not create a duplicate.",
+      );
       return tx.identifiers()[0] ?? "";
     },
   };

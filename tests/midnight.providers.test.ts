@@ -167,6 +167,18 @@ describe("midnight providers", () => {
     expect(provingReads).toBe(1);
   });
 
+  it("reports the balance stage through the 1AM provider stack", async () => {
+    const messages: string[] = [];
+    const built = await withBrowserWindow(() =>
+      buildOneAmProviders(mockConnectorApi("wallet"), undefined, (message) => messages.push(message)),
+    );
+    const providers = built.providers as unknown as {
+      walletProvider: { balanceTx(tx: { serialize: () => Uint8Array }): Promise<unknown> };
+    };
+    await expect(providers.walletProvider.balanceTx({ serialize: () => new Uint8Array() })).rejects.toThrow();
+    expect(messages).toContain("Preparing the transaction with 1AM...");
+  });
+
   it("falls back to the local proof server when Lace declines proving", async () => {
     const built = await withBrowserWindow(() =>
       buildLaceProviders(mockConnectorApi("reject"), undefined, {

@@ -179,6 +179,12 @@ export function friendlyWalletError(cause: unknown): string {
     return "Your wallet couldn't prepare the transaction — it may hold no funds. Get test tokens from the preprod faucet, then try again.";
   }
   if (/request timed out|timed out/i.test(raw)) {
+    if (/preparing the transaction/i.test(raw)) {
+      return "1AM stopped while preparing the transaction, before an approval could be shown. No transaction was sent. Reload the 1AM extension, wait until it says Synced, then retry once.";
+    }
+    if (/submitted transaction/i.test(raw)) {
+      return "1AM did not confirm the submitted transaction. Check 1AM activity before retrying so you do not create a duplicate.";
+    }
     return "1AM timed out before it could show the approval request. No bid was sent. Confirm the wallet is synced, then retry once.";
   }
   if (/mismatched verifier|verifier keys|operations:.*undefined|contractstate/i.test(raw)) {
