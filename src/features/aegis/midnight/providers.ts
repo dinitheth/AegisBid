@@ -96,6 +96,13 @@ export type AegisProviders = {
   publicDataProvider: ReturnType<typeof indexerPublicDataProvider>;
   /** Where proofs come from: the wallet (1AM/ProofStation) or the local proof server (Lace fallback). */
   provingVia: ProvingVia;
+  /**
+   * Account material already read while assembling the provider stack.
+   * Reusing it prevents extra extension RPC calls immediately before a
+   * transaction is checked and presented for approval.
+   */
+  walletCoinPublicKey: string;
+  networkId: string;
 };
 
 /** Local proof server for wallets that don't prove in-extension (Lace). */
@@ -197,6 +204,8 @@ export async function buildConnectorBase(api: OneAmConnectedApi, bid?: PrivateBi
   );
   return {
     config,
+    walletCoinPublicKey: keys.shieldedCoinPublicKey,
+    networkId: config.networkId || "preprod",
     zkConfigProvider,
     publicDataProvider,
     privateStateProvider,
@@ -242,6 +251,8 @@ export async function buildOneAmProviders(
   bid?: PrivateBidWitnesses,
 ): Promise<AegisProviders> {
   const {
+    walletCoinPublicKey,
+    networkId,
     zkConfigProvider,
     publicDataProvider,
     privateStateProvider,
@@ -265,6 +276,8 @@ export async function buildOneAmProviders(
     compiled,
     publicDataProvider,
     provingVia: "wallet",
+    walletCoinPublicKey,
+    networkId,
   };
 }
 
@@ -280,6 +293,8 @@ export async function buildLaceProviders(
   opts?: { proofServerUrl?: string },
 ): Promise<AegisProviders> {
   const {
+    walletCoinPublicKey,
+    networkId,
     zkConfigProvider,
     publicDataProvider,
     privateStateProvider,
@@ -318,6 +333,8 @@ export async function buildLaceProviders(
     compiled,
     publicDataProvider,
     provingVia,
+    walletCoinPublicKey,
+    networkId,
   };
 }
 
@@ -341,7 +358,7 @@ export async function submitLiveBid(input: {
 }): Promise<string> {
   const laceOpts =
     input.proofServerUrl === undefined ? undefined : { proofServerUrl: input.proofServerUrl };
-  const { providers, compiled } =
+  const { providers, compiled, walletCoinPublicKey, networkId } =
     input.walletKind === "lace"
       ? await buildLaceProviders(input.api, input.witnesses, laceOpts)
       : await buildOneAmProviders(input.api, input.witnesses);
@@ -349,10 +366,8 @@ export async function submitLiveBid(input: {
   // Derive the secret key from the wallet's shielded coin public key for the private state.
   // The contract uses this secret key to derive p1_key/p2_key for the bid commitment.
   // The shielded coin public key is in bech32m format; convert to 32-byte array.
-  const keys = await input.api.getShieldedAddresses();
   const { parseCoinPublicKeyToHex } = await import("@midnight-ntwrk/midnight-js-utils");
-  const networkId = (await input.api.getConfiguration()).networkId || "preprod";
-  const coinHex = parseCoinPublicKeyToHex(keys.shieldedCoinPublicKey, networkId);
+  const coinHex = parseCoinPublicKeyToHex(walletCoinPublicKey, networkId);
   const secretKey = hexToBytes(coinHex); // 32-byte array for the contract's Bytes<32> secretKey
 
   // Initial private state for the contract - contains secret key for key derivation

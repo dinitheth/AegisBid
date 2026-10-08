@@ -178,6 +178,9 @@ export function friendlyWalletError(cause: unknown): string {
   if (/insufficient (funds|balance|dust)/i.test(firstLine)) {
     return "Your wallet couldn't prepare the transaction — it may hold no funds. Get test tokens from the preprod faucet, then try again.";
   }
+  if (/request timed out|timed out/i.test(raw)) {
+    return "1AM timed out before it could show the approval request. No bid was sent. Confirm the wallet is synced, then retry once.";
+  }
   if (/expected instance of|scoped transaction|failed to balance/i.test(raw)) {
     return "The wallet failed while preparing the transaction. Open Technical details below and share the text so the cause can be traced.";
   }

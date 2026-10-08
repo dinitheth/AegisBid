@@ -3,6 +3,7 @@ import { CompiledContract } from "@midnight-ntwrk/compact-js";
 import { Contract } from "../../../../managed/aegis-bid-v2/contract/index.js";
 import {
   ZK_BASE,
+  buildOneAmProviders,
   buildLaceProviders,
   bytesToHex,
   createMemoryPrivateStateProvider,
@@ -131,6 +132,27 @@ describe("midnight providers", () => {
     expect(built.provingVia).toBe("wallet");
     expect(built.providers).toBeDefined();
     expect(built.compiled).toBeDefined();
+  });
+
+  it("reads wallet account details only once while assembling a 1AM stack", async () => {
+    let configurationReads = 0;
+    let addressReads = 0;
+    const api = mockConnectorApi("wallet");
+    const originalConfiguration = api.getConfiguration;
+    const originalAddresses = api.getShieldedAddresses;
+    api.getConfiguration = async () => {
+      configurationReads += 1;
+      return originalConfiguration();
+    };
+    api.getShieldedAddresses = async () => {
+      addressReads += 1;
+      return originalAddresses();
+    };
+    const built = await withBrowserWindow(() => buildOneAmProviders(api));
+    expect(configurationReads).toBe(1);
+    expect(addressReads).toBe(1);
+    expect(built.walletCoinPublicKey).toBe("coin");
+    expect(built.networkId).toBe("preprod");
   });
 
   it("falls back to the local proof server when Lace declines proving", async () => {
