@@ -5,9 +5,9 @@ import {
   parseReserveToBigInt,
   storedBidToWitness,
   uiTenderToConfig,
-} from "./evaluator";
-import type { StoredBid, Tender } from "./protocol";
-import { TenderError, beginEvaluation, settle } from "./tenderEngine";
+} from "../src/features/aegis/evaluator";
+import type { StoredBid, Tender } from "../src/features/aegis/protocol";
+import { TenderError, beginEvaluation, settle } from "../src/features/aegis/tenderEngine";
 
 const tender: Tender = {
   id: "AGB-TEST-001",

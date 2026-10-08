@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatConnectorDust } from "./wallet";
+import { formatConnectorDust } from "../src/features/aegis/wallet";
 
 describe("formatConnectorDust", () => {
   it("formats the 1AM-reported scale (raw 2.5e19 = 25,000 DUST)", () => {

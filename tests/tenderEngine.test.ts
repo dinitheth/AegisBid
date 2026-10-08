@@ -7,7 +7,7 @@ import {
   settle,
   submitBid,
   type TenderConfig,
-} from "./tenderEngine";
+} from "../src/features/aegis/tenderEngine";
 
 const SPEC = "0xspecification-root";
 

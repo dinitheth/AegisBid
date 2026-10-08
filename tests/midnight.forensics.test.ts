@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { diagnoseCallAssembly } from "./forensics";
-import type { OneAmConnectedApi } from "./oneAmWallet";
+import { diagnoseCallAssembly } from "../src/features/aegis/midnight/forensics";
+import type { OneAmConnectedApi } from "../src/features/aegis/midnight/oneAmWallet";
 
 const witnesses = {
   amount: 1200n,

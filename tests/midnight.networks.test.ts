@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { clearEnvOverrides, overrideEnv } from "./env";
-import { MIDNIGHT_NETWORKS, getActiveNetwork, getActiveNetworkId, isNetworkId } from "./networks";
+import { clearEnvOverrides, overrideEnv } from "../src/features/aegis/midnight/env";
+import { MIDNIGHT_NETWORKS, getActiveNetwork, getActiveNetworkId, isNetworkId } from "../src/features/aegis/midnight/networks";
 
 // The repo .env sets preprod values; these default-path tests force a blank
 // environment instead (vi.stubEnv can't cross into the modules under test:

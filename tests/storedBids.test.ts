@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { generateNonce, normalizeStoredBids } from "./protocol";
-import { makeCommitment } from "./tenderEngine";
+import { generateNonce, normalizeStoredBids } from "../src/features/aegis/protocol";
+import { makeCommitment } from "../src/features/aegis/tenderEngine";
 
 describe("stored bids", () => {
   it("migrates legacy entries missing salt/bidderKey", () => {

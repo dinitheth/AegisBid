@@ -1,229 +1,165 @@
-# AegisBid
+# AegisBid — private procurement for Midnight Wave 2
 
-AegisBid is a zero-knowledge shielded tender and sealed-bid protocol designed for Midnight Network. It lets an issuer receive binding bids, prove the correct winner, and publish an auditable settlement without exposing losing bids or bidder secrets.
+AegisBid is a privacy-preserving tender prototype for Midnight. Issuers publish the tender policy publicly, bidders submit sealed offers, and an authorized evaluator settles the result without publishing losing amounts or bid salts.
 
-## V2 preprod deployment candidate
+It is built for the **Midnight Wave 2** hackathon track and runs against **Midnight Preprod** through the 1AM wallet.
 
-`contracts/aegis_bid_v2.compact` is the deployable V2 contract. It intentionally creates a **new contract address**; it does not mutate the historical V1 deployment.
+> Hackathon software, not an audited procurement system. Do not use it for real funds, regulated tenders, or production procurement.
 
-- Bid acceptance and evaluation use Midnight ledger block time, rather than a timestamp provided by the browser.
-- `LowestCompliant` treats `reserve` as a ceiling (`winningAmount <= reserve`); highest-bid mode treats it as a floor.
-- A tender-specific nullifier derives from the contract address and the bidder's stable wallet public key, preventing that wallet from bidding twice on the same tender. It is not a human-identity or Sybil-resistance system.
-- The deployer creates a private 32-byte evaluator capability. Its commitment is public, but the secret is required to start evaluation and settle. The Live deploy page saves it on the deploying browser under `aegisbid-v2-evaluator-secret:<contract-address>`; export/back it up before clearing browser data.
-- V2 settles up to **8 bids** per tender. This is a deliberate proving-key distribution limit: the 64-bid form generated a 153 MB key, while the verified V2 key is ~19.6 MB. Split larger procurements into lots until a batched/recursive proof design is introduced.
+## What V2 demonstrates
 
-Generated V2 bindings and proving assets live in `managed/aegis-bid-v2/`. Validate source shape with `npm run compact:v2:check`; the full key generation was verified with Compact 0.31.1 on the Azure builder VM.
+- **Sealed offers:** an offer amount and salt are private witness inputs; the public ledger receives a binding commitment rather than the amount.
+- **On-chain tender timing:** bid acceptance and the transition to evaluation use Midnight ledger block time, not a timestamp supplied by the browser.
+- **Correct policy enforcement:** highest-bid tenders require a winning amount at or above the reserve; lowest-compliant tenders require it at or below the ceiling.
+- **Evaluator authorization:** deployment commits to a private evaluator capability. Only the holder can begin evaluation or settle.
+- **Duplicate supplied-identity prevention:** a tender-scoped nullifier prevents reuse of the same supplied bidder key for that tender.
+- **Inspectable results:** the public record exposes the winning commitment and settlement outcome while keeping losing offers sealed.
 
-For Vercel, do not retain an old `VITE_ZK_CONFIG_BASE` configured for V1. V2 uses its committed jsDelivr location by default; only set `VITE_AEGISBID_V2_ZK_CONFIG_BASE` when intentionally hosting the V2 `keys/` and `zkir/` assets elsewhere.
+## Live V2 deployment
 
-> The browser application in this repository is a deterministic protocol workbench. It demonstrates the intended contract states, privacy boundary, proof lifecycle, settlement outputs, and QA cases locally. It does not claim that the included simulation is a live Midnight deployment.
+The current V2 tender contract is deployed on Midnight Preprod:
 
-## Judge quickstart (Midnight Buildathon, Wave 1)
-
-```bash
-bun install        # or: npm install
-bun run test       # 64 automated checks (Vitest) — must be green
-bun run compact:check  # 24 contract structural gates — must pass
-bun run dev        # open the printed local URL
+```text
+21b2efc6d75311c13c42f131ea48406539a5a461ecb32f7fb7e0e460e9bdc957
 ```
 
-- Contract: [`contracts/aegis_bid.compact`](contracts/aegis_bid.compact), Compact language 0.16 baseline — see [`contracts/COMPACT_TOOLCHAIN.md`](contracts/COMPACT_TOOLCHAIN.md) for the pinned references and full-compile instructions.
-- Executable spec of the circuits: [`src/features/aegis/tenderEngine.ts`](src/features/aegis/tenderEngine.ts), asserted by [`tenderEngine.test.ts`](src/features/aegis/tenderEngine.test.ts), [`hash.test.ts`](src/features/aegis/hash.test.ts), [`storedBids.test.ts`](src/features/aegis/storedBids.test.ts), [`evaluator.test.ts`](src/features/aegis/evaluator.test.ts). UI tender-to-engine mapping lives in [`src/features/aegis/evaluator.ts`](src/features/aegis/evaluator.ts).
-- Bid commitments in the UI are SHA-256 bindings (`amount:salt:key`) modeling the contract's `persistentCommit` (salt blinds the value) — see `BidPage` in [`src/features/aegis/AegisUserApp.tsx`](src/features/aegis/AegisUserApp.tsx). The workbench does not claim SHA-256 is the on-chain primitive.
-- Submission pack: [`docs/WAVE1-SUBMISSION.md`](docs/WAVE1-SUBMISSION.md), [`docs/pitch-deck.md`](docs/pitch-deck.md), [`docs/demo-script.md`](docs/demo-script.md), [`docs/submission-checklist.md`](docs/submission-checklist.md).
-- License: Apache-2.0 (`LICENSE`). Repo topic `midnightntwrk` is set.
+Use the app’s **Copy share link** action for the complete tender URL. The address alone identifies the contract, while the share link also carries display metadata that lets another browser discover the tender.
 
-## Why shielded tenders
+The app loads V2 proving assets by default from:
 
-Conventional on-chain auctions expose economically sensitive values. Off-chain tenders preserve secrecy but require trust in the evaluator. AegisBid separates public verification from private data:
+```text
+https://cdn.jsdelivr.net/gh/dinitheth/AegisBid@main/managed/aegis-bid-v2
+```
 
-- bidders keep the amount, random salt, and identity witness locally;
-- the public ledger receives a binding commitment, nullifier, timestamp, and proof receipt;
-- settlement circuits prove that the winning committed value is optimal and policy-compliant;
-- losing amounts, salts, and identities are not written to public state;
-- the winning value is disclosed only as an explicit settlement output.
+Do not configure the legacy `VITE_ZK_CONFIG_BASE` for a V2 deployment. To host V2 assets elsewhere, set `VITE_AEGISBID_V2_ZK_CONFIG_BASE` to a directory containing the V2 `keys/` and `zkir/` folders.
+
+## End-to-end demo
+
+1. Open the deployed AegisBid app and connect a **synced 1AM Preprod** wallet.
+2. As issuer, create a tender with a future deadline, policy, and reserve or ceiling. Save the generated contract address and share link.
+3. In a second wallet/browser profile, open the share link and submit a bid. The first use downloads circuit assets and prepares a local ZK proof; 1AM asks for approval only after that preparation succeeds.
+4. Once ledger time passes the deadline, return to the issuer browser to begin evaluation and settle.
+5. Verify the result in the app and Midnight/1AM Explorer.
+
+### Operational notes
+
+- A 1AM `Request timed out` error occurs before a wallet approval is shown; **no bid was sent**. Confirm the wallet shows **Preprod · Synced**, then retry once. Do not keep clicking Submit.
+- The evaluator capability is held in browser-local storage under `aegisbid-v2-evaluator-secret:<contract-address>`. Keep the deploying browser profile and back up the secret before clearing site data. Never share a wallet recovery phrase or this secret.
+- The initial proving-key download and first proof can take minutes on Preprod. Keep the page and wallet open until the wallet approval appears.
+
+## V2 contract and artifacts
+
+| Item | Location | Purpose |
+| --- | --- | --- |
+| Deployable Compact contract | [`contracts/aegis_bid_v2.compact`](contracts/aegis_bid_v2.compact) | V2 tender rules and ZK circuits |
+| Generated V2 bindings | [`managed/aegis-bid-v2/contract`](managed/aegis-bid-v2/contract) | Browser contract integration |
+| V2 prover/verifier assets | [`managed/aegis-bid-v2`](managed/aegis-bid-v2) | `submitBid`, `beginEvaluation`, and `settle` proofs |
+| Browser integration | [`src/features/aegis/midnight`](src/features/aegis/midnight) | 1AM/Lace connector, provider stack, deployment UI |
+| Security-shape gate | [`scripts/compact-v2-check.mjs`](scripts/compact-v2-check.mjs) | Guards V2 invariants before release |
+
+V2 uses Compact **0.31.1** / Ledger 8-compatible generated artifacts. The full V2 compile was verified on the Azure builder VM because the Compact ZK backend requires a compatible AVX-capable CPU.
+
+### Practical proving bound
+
+V2 settles at most **8 bids per tender**. This is an explicit hackathon trade-off: the former 64-bid settlement circuit generated a ~153 MB prover, whereas V2’s settlement prover is about 19.6 MB. For larger procurements, split work into lots until a batched or recursive proof design is available.
+
+## Important limitations
+
+- Preprod’s current Compact/Ledger toolchain does not provide a circuit-level `kernel.caller()` binding. V2 prevents duplicate **supplied** bidder keys, but cannot yet prove that the key belongs to the wallet that submitted the transaction. It is not Sybil resistance or verified real-world identity.
+- Bid timing, transaction origin, and other network metadata may be visible.
+- The evaluator must retain the private capability and bid witnesses needed for settlement.
+- This repository includes legacy V1 material for history and comparison. New work must use `aegis_bid_v2.compact` and V2 assets.
+- No security audit, production key-management design, or compliance review has been performed.
 
 ## Architecture
 
 ```text
-Bidder device                     Midnight public state
-------------------------------    --------------------------------
-bid amount                        tender configuration
-random salt          ZK proof     commitment hash
-identity witness  --------------> identity nullifier
-local witness store               commitment count
-                                  phase and deadline
-                                  settlement receipt
+Bidder browser + 1AM                 Midnight Preprod
+--------------------                 -------------------------------
+private amount + salt  -- ZK proof -> commitment and nullifier
+private bidder key                  tender policy and phase
+                                     commitment count
+Issuer evaluator capability  ------> authorized evaluation/settlement
+                                     public settlement outcome
 ```
 
-The interface calls this the dual-ledger model: private local state plus replicated public ledger state. This is a conceptual model of Midnight's public transcript and private computation; it is not a claim that Midnight runs two blockchains.
+The UI also contains a deterministic local protocol model used for fast, repeatable tests. It is a test harness; live contract behavior is supplied by the V2 Compact contract and generated artifacts.
 
-### Commitment phase
+## Local setup
 
-For each bidder public key `pk`, AegisBid derives:
+Requirements:
 
-```text
-commitment = H(amount, salt, pk)
-nullifier  = H(identitySecret, issuer)
-```
-
-The submission circuit proves the tender is open, the deadline has not elapsed, the identity nullifier is unused, and the commitment is new. Only the commitment and nullifier become public.
-
-### Settlement phase
-
-After the deadline, an authorized evaluator supplies committed bid witnesses to the settlement circuit. The circuit checks membership for every candidate and applies bounded pairwise comparisons:
-
-- `winningAmount >= candidateAmount` for highest-bid auctions;
-- `winningAmount <= candidateAmount` for lowest-compliant procurement;
-- reserve or ceiling and specification constraints must also hold.
-
-The public receipt contains the winner commitment, explicitly disclosed clearing value, comparison root, and settlement time. It does not contain losing values.
-
-## Compact contract
-
-The production-shaped reference contract is [`contracts/aegis_bid.compact`](contracts/aegis_bid.compact).
-
-| Section                                                 | Purpose                                                                    | Visibility |
-| ------------------------------------------------------- | -------------------------------------------------------------------------- | ---------- |
-| `TenderConfig`                                          | Deadline, mode, reserve and specification root                             | Public     |
-| `commitments`                                           | Binding hashes of private bids                                             | Public     |
-| `nullifiers`                                            | One-submission identity protection                                         | Public     |
-| `localBidAmount`, `localBidSalt`, `localIdentitySecret` | Bid witnesses resolved by the DApp                                         | Private    |
-| `submitBid`                                             | Deadline, nullifier uniqueness, `persistentCommit` binding circuit         | ZK proof   |
-| `settle`                                                | Membership, constant-bounded pairwise ordering and reserve/ceiling circuit | ZK proof   |
-| `SettlementReceipt`                                     | Winner commitment and explicit public outputs                              | Public     |
-
-Compact is evolving. Pin a compiler release and reconcile syntax with that release before deployment. The contract is intentionally presented as production-shaped reference code rather than a claim of audited, mainnet-ready bytecode.
-
-## Deployment status (honest)
-
-The contract is **deployed on Midnight preprod** (toolchain 0.31.1, via the
-1AM wallet with sponsored fees) and **verified on-chain**: phase `Open`,
-reserve `1000`, highest-bid mode, deadline Sep 27 2026. It was previously
-proven end-to-end on a local devnet (`submitBid` → `beginEvaluation` →
-`settle`, receipt `winningValue=1200`, phase `Settled`). Not on mainnet.
-
-- Preprod deployment: `daf54fc95751b84c53da2f402aea96e5f23d19185783453ba067c123d89d0fc4`
-- Deploy tx: `a7d150207c83adc5d993f5267a4abfaa8115fc81b71091712fa3fa029c4a2fa7` (block #2,634,493, fee 1 speck)
-- Explorer: `https://explorer.1am.xyz/tx/a7d150207c83adc5d993f5267a4abfaa8115fc81b71091712fa3fa029c4a2fa7?network=preprod`
-- Local devnet deployment: `75e339942b5d9f07bd9713b13b12cdf9f10ebf68e487fd894fc8e7a21bdbe390` (settled, receipt `winningValue=1200`)
-- Check status: `bun run midnight:status`
-- Real-chain path: [`docs/MIDNIGHT_INTEGRATION.md`](docs/MIDNIGHT_INTEGRATION.md) (endpoints in [`src/features/aegis/midnight/networks.ts`](src/features/aegis/midnight/networks.ts), ledger mapping + witnesses in [`src/features/aegis/midnight/contract.ts`](src/features/aegis/midnight/contract.ts), browser deploy in [`src/features/aegis/midnight/DeployPage.tsx`](src/features/aegis/midnight/DeployPage.tsx))
-- Configure a deployment: copy [`.env.example`](.env.example), set `VITE_MIDNIGHT_NETWORK_ID` and `VITE_AEGISBID_CONTRACT`.
-- Hosting: `bun run build` serves a Node server for the VPS (`nitro` `node-server` preset); on Vercel (`VERCEL=1`) it emits `.vercel/output` with a Node.js serverless function instead — never Edge (the ledger stack cannot run on workerd-style runtimes).
-- Global tender discovery needs the shared registry: set server-only `TENDER_REGISTRY_URL` + `TENDER_REGISTRY_TOKEN` (Upstash Redis REST; see `.env.example`). Without them, publishing stays device-local.
-
-## Privacy guarantees and limits
-
-### Guaranteed by the protocol design
-
-- Raw bid values and salts do not enter public contract state during bidding.
-- Commitments bind a bidder to one value without revealing it.
-- Nullifiers prevent repeat use of the same private identity witness per issuer.
-- Comparison proofs reveal the ordering result without publishing losing values.
-- Public verification does not require trusting the browser simulation.
-
-### Operational assumptions
-
-- The bidder device and witness storage must remain uncompromised.
-- Metadata such as submission timing and transaction origin can still be observable.
-- Issuer authorization and compliant specification proofs must be integrated with the deployment's identity policy.
-- Circuit parameters, cryptographic primitives, and generated bindings require independent review and audit.
-- The local workbench models proof behavior but does not benchmark a production proof server.
-
-## Run the interface
-
-Requirements: Node.js 22+ and Bun.
+- Node.js 22+
+- npm or Bun
+- Docker only when running the optional Midnight local network/proof service
+- 1AM wallet for the live Preprod flow
 
 ```bash
-bun install
-bun run dev
+npm install
+npm run dev
 ```
 
-Open `http://localhost:8080`.
-
-The interface includes:
-
-1. a filterable tender explorer with optional live Midnight indexer settings;
-2. a shielded bid terminal with deterministic local commitment generation;
-3. bid history with sealed references stored on this device;
-4. a reserve / ceiling comparison view with eligibility checks;
-5. an evaluator settlement flow (`beginEvaluation` + `settle` via `tenderEngine.ts`) with receipts and history;
-6. a Midnight wallet balance view (Lace Midnight connector);
-7. results and plain-language how-it-works views.
-
-## Midnight local development
-
-Use the official [`midnight-local-dev`](https://github.com/midnightntwrk/midnight-local-dev) environment and the current [Midnight installation guide](https://docs.midnight.network/getting-started/installation). Exact commands and compiler syntax can change between releases; use the README and release notes of the version you pin.
-
-A typical integration workflow is:
+Open the URL printed by Vite. For a production build:
 
 ```bash
-# 1. Start the pinned Midnight local network and proof server
-# Follow the docker-compose command in the selected midnight-local-dev release.
+npm run build
+```
 
-# 2. Confirm the Compact compiler version
+Useful environment variables are documented in [`.env.example`](.env.example):
+
+- `VITE_MIDNIGHT_NETWORK_ID`
+- `VITE_AEGISBID_CONTRACT` for the legacy/default contract path
+- `VITE_AEGISBID_V2_ZK_CONFIG_BASE` for an intentional V2 asset mirror
+- `TENDER_REGISTRY_URL` and `TENDER_REGISTRY_TOKEN` for optional shared tender discovery (server-side only)
+
+## Tests and verification
+
+All executable tests are in the root-level [`tests/`](tests) folder. They import production modules from `src/` rather than copying implementation code.
+
+```bash
+npm test                 # Vitest protocol, wallet, provider, and UI-model checks
+npm run compact:v2:check # V2 static contract security gates
+npm run build            # production browser/server build
+```
+
+| Test suite | Coverage |
+| --- | --- |
+| `tests/tenderEngine.test.ts` | Highest/lowest winner selection, reserve/ceiling, deadlines, duplicates, state safety |
+| `tests/evaluator.test.ts` | UI-to-protocol mapping and settlement adapter behavior |
+| `tests/hash.test.ts`, `tests/storedBids.test.ts` | Commitment model and local bid persistence/migration |
+| `tests/chain.test.ts` | Tender discovery, shared links, live-count overlays, registry validation |
+| `tests/wallet.test.ts` | Wallet balance display handling |
+| `tests/midnight.contract.test.ts` | Generated contract mapping and witness construction |
+| `tests/midnight.providers.test.ts` | V2 asset path, provider assembly, wallet/proof-server selection, private-state scope |
+| `tests/midnight.oneAmWallet.test.ts` | Connector discovery, timeouts, and wallet error messages |
+| `tests/midnight.networks.test.ts` | Pinned network configuration |
+| `tests/midnight.forensics.test.ts` | Transaction-assembly diagnostic retention |
+
+`npm run compact:v2:check` asserts the V2 security properties that matter for Wave 2: ledger-time gating, evaluator capability, bidder nullifier usage, highest-floor/lowest-ceiling behavior, and the eight-bid proving bound.
+
+## Midnight local development and recompilation
+
+Use the official [Midnight local network guide](https://docs.midnight.network/guides/midnight-local-network) and pin the toolchain version before regenerating artifacts. A typical flow is:
+
+```bash
+# Start the version-pinned Midnight local network and proof service.
 compact --version
-
-# 3. Compile the contract with the pinned toolchain
-compact build contracts/aegis_bid.compact
-
-# 4. Generate or refresh TypeScript bindings using that release's CLI
-# 5. Connect the generated API and witness provider to the UI
-# 6. Run contract integration tests against the local node
+# Compile V2 with Compact 0.31.1 on a compatible Linux/AVX builder.
+compactc contracts/aegis_bid_v2.compact managed/aegis-bid-v2
+npm run compact:v2:check
 ```
 
-The repository does not invent a fixed Docker command because `midnight-local-dev` topology and CLI flags are release-specific. Pin the toolchain in CI before replacing the deterministic browser adapter with generated bindings.
+The Azure Ubuntu builder VM was used to compile the current V2 package; it is a build environment, not a public proof server. Keep it stopped when unused to avoid charges.
 
-## QA scenarios
+## Project resources
 
-The QA runner is deterministic and repeatable:
+- [Wave 1 submission archive](docs/WAVE1-SUBMISSION.md)
+- [Pitch deck](docs/pitch-deck.md)
+- [Demo script](docs/demo-script.md)
+- [Midnight integration notes](docs/MIDNIGHT_INTEGRATION.md)
+- [Compact documentation](https://docs.midnight.network/compact/reference/compact-reference)
+- [Midnight installation guide](https://docs.midnight.network/getting-started/installation)
 
-| Scenario                 | Expected invariant                                          |
-| ------------------------ | ----------------------------------------------------------- |
-| Three-party sealed bid   | Correct committed winner; losing values absent from receipt |
-| Under-reserve rejection  | Settlement constraint fails; state remains unsettled        |
-| Post-deadline submission | Submission fails; commitment count is unchanged             |
+## License
 
-For network-level tests, repeat these cases through generated bindings against `midnight-local-dev`, assert both returned values and ledger state, and retain proof-server logs as artifacts.
-
-## Tests
-
-Automated suite — Vitest, 64 checks across 11 test files:
-
-```bash
-bun run test         # run once
-bun run test:watch   # watch mode
-```
-
-| Test file                                         | What it proves                                                                                                                                                                                     |
-| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/features/aegis/hash.test.ts`                 | SHA-256 matches FIPS 180-4 vectors, deterministic                                                                                                                                                  |
-| `src/features/aegis/tenderEngine.test.ts`         | Three-party sealed bid (winner disclosed, losers redacted); under-reserve, post-deadline, duplicate-identity, non-optimal-winner, and incomplete-bid-set rejections; lowest-compliant ceiling mode |
-| `src/features/aegis/storedBids.test.ts`           | Legacy stored-bid migration; UI commitments match the protocol engine                                                                                                                              |
-| `src/features/aegis/evaluator.test.ts`            | UI-tender to engine config mapping, stored-bid to witness conversion, adapter `beginEvaluation` + `settle` flow, non-optimal / under-reserve rejections                                            |
-| `src/features/aegis/chain.test.ts`                | Default preprod tender, shared links, published-tender validation and merging, indexer activity overlays                                                                                           |
-| `src/features/aegis/wallet.test.ts`               | Wallet balance display formatting and invalid-input handling                                                                                                                                       |
-| `src/features/aegis/midnight/contract.test.ts`    | Deployment status, Compact constructor mapping, byte conversion, bid and settlement witness builders                                                                                               |
-| `scripts/compact-v2-check.mjs`                    | V2 structural security gate: ledger time, evaluator capability, wallet nullifier, ceiling/floor and 8-bid bound                                                                                    |
-| `src/features/aegis/midnight/networks.test.ts`    | Network identifiers and pinned Midnight endpoint configuration                                                                                                                                     |
-| `src/features/aegis/midnight/oneAmWallet.test.ts` | 1AM/Lace connector discovery, connection timeout, and user-facing wallet errors                                                                                                                    |
-| `src/features/aegis/midnight/providers.test.ts`   | Browser provider construction, ZK artifact path, wallet/proof-server selection, and private-state scoping                                                                                          |
-| `src/features/aegis/midnight/forensics.test.ts`   | Failure-forensics diagnostics retain useful partial evidence when transaction assembly fails                                                                                                       |
-
-Negative tests verify that rejected operations do not mutate state. Cases map
-directly to the contract invariants (`tenderEngine.ts` mirrors
-`contracts/aegis_bid.compact`) and can be repeated against a local Midnight
-node through generated bindings.
-
-## Security status
-
-AegisBid is a hackathon reference implementation and has not been audited. Do not use it to control real procurement, treasury, or regulated tender activity without a complete Compact compatibility pass, circuit review, key-management design, authorization policy, adversarial testing, and independent security audit.
-
-## References
-
-- [Compact reference](https://docs.midnight.network/compact/reference/compact-reference)
-- [Privacy-first Compact concepts](https://docs.midnight.network/concepts/how-midnight-works/compact-privacy-first-language)
-- [Writing a Compact contract](https://docs.midnight.network/compact/reference/writing)
-- [Explicit disclosure](https://docs.midnight.network/compact/reference/explicit-disclosure)
-- [Midnight local network](https://docs.midnight.network/guides/midnight-local-network)
+[Apache-2.0](LICENSE)

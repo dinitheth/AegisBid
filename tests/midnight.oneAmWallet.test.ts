@@ -6,7 +6,7 @@ import {
   friendlyWalletError,
   type DetectedWallet,
   type OneAmInitialApi,
-} from "./oneAmWallet";
+} from "../src/features/aegis/midnight/oneAmWallet";
 
 describe("connectDetectedWallet", () => {
   afterEach(() => {

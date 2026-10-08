@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CompiledContract } from "@midnight-ntwrk/compact-js";
-import { Contract } from "../../../../managed/aegis-bid-v2/contract/index.js";
+import { Contract } from "../managed/aegis-bid-v2/contract/index.js";
 import {
   ZK_BASE,
   buildOneAmProviders,
@@ -9,9 +9,9 @@ import {
   createMemoryPrivateStateProvider,
   toBindingTenderConfig,
   type AnyWitnessContext,
-} from "./providers";
-import { listWalletConnectors } from "./oneAmWallet";
-import type { OneAmConnectedApi } from "./oneAmWallet";
+} from "../src/features/aegis/midnight/providers";
+import { listWalletConnectors } from "../src/features/aegis/midnight/oneAmWallet";
+import type { OneAmConnectedApi } from "../src/features/aegis/midnight/oneAmWallet";
 
 function mockConnectorApi(proving: "wallet" | "reject"): OneAmConnectedApi {
   return {

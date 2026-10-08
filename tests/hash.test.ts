@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sha256Hex } from "./hash";
+import { sha256Hex } from "../src/features/aegis/hash";
 
 describe("sha256Hex", () => {
   it("matches the FIPS 180-4 empty-string vector", () => {

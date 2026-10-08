@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { clearEnvOverrides, overrideEnv } from "./env";
+import { clearEnvOverrides, overrideEnv } from "../src/features/aegis/midnight/env";
 import {
   buildSettlementWitnesses,
   buildSubmitBidWitnesses,
@@ -10,7 +10,7 @@ import {
   stringToBytes32Hex,
   toLedgerDeadlineSeconds,
   toLedgerTenderConfig,
-} from "./contract";
+} from "../src/features/aegis/midnight/contract";
 
 describe("midnight contract wiring", () => {
   // The repo .env sets a contract address; this test needs a blank env.

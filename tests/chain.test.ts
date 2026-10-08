@@ -12,7 +12,7 @@ import {
   publishedToTender,
   type ChainActivity,
   type PublishedTender,
-} from "./chain";
+} from "../src/features/aegis/chain";
 
 describe("chain flagship", () => {
   it("defaults to the verified preprod deployment", () => {
