@@ -115,6 +115,7 @@ export function DeployPage() {
       deadline: entry.deadline,
       mode: entry.mode,
       reserve: entry.reserve,
+      v: String(entry.contractVersion ?? 1),
     });
     return `${window.location.origin}${window.location.pathname}?${params.toString()}`;
   };
@@ -273,6 +274,7 @@ export function DeployPage() {
         reserve: reserve === "" ? "0" : reserve,
         deadline: new Date(deadline).toISOString(),
         deployedAt: Date.now(),
+        contractVersion: 2,
       };
       setPublished((items) => {
         const next = [record, ...items.filter((item) => item.address !== address)].slice(0, 20);

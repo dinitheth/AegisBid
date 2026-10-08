@@ -10,6 +10,7 @@ import {
   mergePublishedSources,
   parseSharedTender,
   publishedToTender,
+  publishedContractVersion,
   type ChainActivity,
   type PublishedTender,
 } from "../src/features/aegis/chain";
@@ -64,6 +65,7 @@ describe("published tenders", () => {
     expect(tender.status).toBe("Active");
     expect(tender.mode).toBe("Highest bid");
     expect(tender.threshold).toContain("1,000");
+    expect(tender.contractVersion).toBe(1);
   });
 
   it("marks past-deadline publishes as ready for evaluation", () => {
@@ -146,6 +148,14 @@ describe("shared tender links", () => {
     expect(parsed?.mode).toBe("highest");
     expect(parsed?.reserve).toBe("0");
     expect(parsed?.issuer).toBe("Shared tender");
+  });
+
+  it("marks V2 share links and migrates the known V2 deployment", () => {
+    const v2 = "21b2efc6d75311c13c42f131ea48406539a5a461ecb32f7fb7e0e460e9bdc957";
+    expect(publishedContractVersion(v2)).toBe(2);
+    expect(publishedContractVersion(address, 2)).toBe(2);
+    expect(publishedContractVersion(address)).toBe(1);
+    expect(parseSharedTender(`?contract=${address}&v=2`)?.contractVersion).toBe(2);
   });
 });
 

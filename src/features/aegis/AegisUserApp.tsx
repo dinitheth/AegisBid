@@ -615,6 +615,7 @@ function BidPage({
   // The on-chain circuit refuses late bids (DEADLINE_ELAPSED) — check up
   // front so nobody pays for a transaction the contract will reject.
   const biddingClosed = new Date(tender.deadline).getTime() <= Date.now();
+  const legacyTender = Boolean(tender.contractAddress && tender.contractVersion !== 2);
   const submit = async () => {
     if (!amount || !agreed || biddingClosed) return;
     setSending(true);
@@ -642,9 +643,17 @@ function BidPage({
       submittedAt,
     };
     const liveApi = oneAm.api;
-    const liveContract = tender.contractAddress;
+    const liveContract = tender.contractVersion === 2 ? tender.contractAddress : undefined;
     const liveKind = oneAm.info?.walletName === "Lace" ? "lace" : "1am";
     const liveLabel = oneAm.info?.walletName ?? "wallet";
+    if (tender.contractAddress && tender.contractVersion !== 2) {
+      const reason =
+        "This is a legacy tender and cannot accept offers through the V2 proof system. Open a V2 share link to submit a bid.";
+      setFailure(reason);
+      onSubmit({ ...base, receipt: commitment, onChain: false, accepted: false, note: reason });
+      setSending(false);
+      return;
+    }
     if (liveApi && liveContract) {
       if (biddingClosed) {
         const reason = `Bidding closed on ${new Date(tender.deadline).toLocaleString()} — the contract no longer accepts offers for this tender.`;
@@ -683,7 +692,7 @@ function BidPage({
         setFailure(reason);
         const detail = cause instanceof Error ? (cause.stack ?? cause.message) : String(cause);
         setFailureDetail(detail.slice(0, 800));
-        console.error("Live bid failed:", cause);
+        if (import.meta.env.DEV) console.error("Live bid failed:", cause);
         onSubmit({ ...base, receipt: commitment, onChain: false, accepted: false, note: reason });
       } finally {
         setStage(null);
@@ -746,10 +755,18 @@ function BidPage({
           </h1>
           <p className="mt-2 text-card-foreground/70">For {tender.title}</p>
           <p className="mt-1 text-xs font-semibold text-primary">
-            {tender.contractAddress
-              ? "Live preprod tender — bids settle on-chain"
+            {legacyTender
+              ? "Legacy tender — V2 bids are unavailable"
+              : tender.contractAddress
+                ? "Live preprod tender — bids settle on-chain"
               : "Demo tender — bids record locally on this device"}
           </p>
+          {legacyTender && (
+            <p className="mt-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+              This historic tender uses an earlier contract version. Open a V2 tender share link to
+              submit a private offer.
+            </p>
+          )}
           {biddingClosed && (
             <p className="mt-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
               Bidding closed on {new Date(tender.deadline).toLocaleString()}. This tender no longer
@@ -840,10 +857,10 @@ function BidPage({
           <Button
             size="lg"
             className="mt-6 w-full"
-            disabled={!amount || !agreed || sending || !enough || biddingClosed}
+            disabled={!amount || !agreed || sending || !enough || biddingClosed || legacyTender}
             onClick={() => void submit()}
           >
-            {sending ? (stage ?? "Working...") : "Submit private offer"}
+            {sending ? (stage ?? "Working...") : legacyTender ? "V2 tender required" : "Submit private offer"}
             <LockKeyhole />
           </Button>
           {failure && (

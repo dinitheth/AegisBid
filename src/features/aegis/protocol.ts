@@ -13,6 +13,8 @@ export type Tender = {
   specification: string;
   /** Live on-chain contract address. */
   contractAddress?: string;
+  /** V2 tenders can use the V2 prover/verifier bundle. Legacy contracts cannot. */
+  contractVersion?: 1 | 2;
 };
 
 /**

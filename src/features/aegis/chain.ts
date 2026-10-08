@@ -29,7 +29,18 @@ export const FLAGSHIP_TENDER = {
   threshold: "Reserve 1,000 credits",
   mode: "Highest bid" as const,
   specification: "Deployed from the Live deploy page; verified on-chain via the indexer.",
+  contractVersion: 1 as const,
 };
+
+/** V2 contracts that predate the versioned share-link format. */
+export const KNOWN_V2_CONTRACTS = new Set([
+  "21b2efc6d75311c13c42f131ea48406539a5a461ecb32f7fb7e0e460e9bdc957",
+]);
+
+export function publishedContractVersion(address: string, declared?: unknown): 1 | 2 {
+  if (declared === 2 || declared === "2" || KNOWN_V2_CONTRACTS.has(address.toLowerCase())) return 2;
+  return 1;
+}
 
 export function getChainConfig(): ChainConfig {
   if (typeof window !== "undefined") {
@@ -187,6 +198,8 @@ export type PublishedTender = {
   reserve: string;
   deadline: string;
   deployedAt: number;
+  /** Present in all newly created/shareable V2 tenders; absent legacy rows are V1. */
+  contractVersion?: 2;
 };
 
 const PUBLISHED_KEY = "aegis-published-tenders";
@@ -202,7 +215,8 @@ export function isValidPublishedTender(entry: unknown): entry is PublishedTender
     (record["mode"] === "highest" || record["mode"] === "lowest") &&
     typeof record["reserve"] === "string" &&
     typeof record["deadline"] === "string" &&
-    typeof record["deployedAt"] === "number"
+    typeof record["deployedAt"] === "number" &&
+    (record["contractVersion"] === undefined || record["contractVersion"] === 2)
   );
 }
 
@@ -271,6 +285,7 @@ export function parseSharedTender(search: string): PublishedTender | null {
     reserve: /^\d+$/.test(reserve) ? reserve : "0",
     deadline: deadline && !Number.isNaN(Date.parse(deadline)) ? deadline : "",
     deployedAt: Date.now(),
+    ...(publishedContractVersion(address, query.get("v")) === 2 ? { contractVersion: 2 } : {}),
   };
 }
 
@@ -309,6 +324,7 @@ export function publishedToTender(entry: PublishedTender): Tender {
     mode: entry.mode === "lowest" ? "Lowest compliant" : "Highest bid",
     specification: "Published from this device; bid counts update after the first offer.",
     contractAddress: entry.address,
+    contractVersion: publishedContractVersion(entry.address, entry.contractVersion),
   };
 }
 
@@ -335,6 +351,7 @@ export function activityToTenders(activity: ChainActivity): Tender[] {
         mode: FLAGSHIP_TENDER.mode,
         specification: `${FLAGSHIP_TENDER.specification} Live bid count below.`,
         contractAddress: activity.state.address,
+        contractVersion: FLAGSHIP_TENDER.contractVersion,
       },
     ];
   }
@@ -354,6 +371,7 @@ export function activityToTenders(activity: ChainActivity): Tender[] {
       mode: "Lowest compliant",
       specification: "Tender data read live from the Midnight indexer for this contract.",
       contractAddress: activity.state.address,
+      contractVersion: 1,
     },
   ];
 }
