@@ -24,7 +24,7 @@ jobs:
     env:
       COMPACT_VERSION: 0.31.1
       COMPACT_ARCHIVE: compactc_v0.31.1_x86_64-unknown-linux-musl.zip
-      COMPACT_URL: https://github.com/midnightntwrk/compact/releases/download/0.31.1/compactc_v0.31.1_x86_64-unknown-linux-musl.zip
+      COMPACT_URL: https://github.com/midnightntwrk/compact/releases/download/compactc-v0.31.1/compactc_v0.31.1_x86_64-unknown-linux-musl.zip
       CONTRACT_SOURCE: contracts/aegis_bid.compact
       OUTPUT_DIRECTORY: .compact-build
 
