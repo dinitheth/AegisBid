@@ -26,7 +26,12 @@ import * as forensicsModule from "./forensics";
 
 export const ZK_BASE =
   (import.meta.env["VITE_AEGISBID_V2_ZK_CONFIG_BASE"] as string | undefined) ||
-  "https://cdn.jsdelivr.net/gh/dinitheth/AegisBid@main/managed/aegis-bid-v2";
+  // Never resolve proving assets through a moving branch ref. A CDN edge can
+  // otherwise return an older verifier bundle while the chain has the newer
+  // one, which makes the SDK reject the contract before 1AM can open its
+  // approval request. This immutable revision is the exact bundle used for
+  // the public V2 deployment below.
+  "https://cdn.jsdelivr.net/gh/dinitheth/AegisBid@8c335f5f3edca4a431053bfd8ed137afbb2430b5/managed/aegis-bid-v2";
 
 export const bytesToHex = (bytes: Uint8Array) =>
   Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");

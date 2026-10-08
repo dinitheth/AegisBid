@@ -28,7 +28,7 @@ Use the app’s **Copy share link** action for the complete tender URL. The addr
 The app loads V2 proving assets by default from:
 
 ```text
-https://cdn.jsdelivr.net/gh/dinitheth/AegisBid@main/managed/aegis-bid-v2
+https://cdn.jsdelivr.net/gh/dinitheth/AegisBid@8c335f5f3edca4a431053bfd8ed137afbb2430b5/managed/aegis-bid-v2
 ```
 
 Do not configure the legacy `VITE_ZK_CONFIG_BASE` for a V2 deployment. To host V2 assets elsewhere, set `VITE_AEGISBID_V2_ZK_CONFIG_BASE` to a directory containing the V2 `keys/` and `zkir/` folders.
