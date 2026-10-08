@@ -616,17 +616,21 @@ function BidPage({
   useEffect(() => {
     if (!sending) return;
     const timer = window.setInterval(() => {
-      setProgress((current) => {
-        if (current >= 92) return current;
-        const next = Math.min(92, current + (current < 42 ? 4 : current < 76 ? 2 : 1));
-        if (next >= 78) setStage("Waiting for 1AM approval...");
-        else if (next >= 44) setStage("Generating your sealed proof...");
-        else if (next >= 22) setStage("Loading secure proof tools...");
-        return next;
-      });
+      setProgress((current) =>
+        current >= 92 ? current : Math.min(92, current + (current < 42 ? 4 : current < 76 ? 2 : 1)),
+      );
     }, 700);
     return () => window.clearInterval(timer);
   }, [sending]);
+  // Keep stage changes outside the progress-state updater. Updating another
+  // state value from inside an updater can make React repeatedly render in a
+  // production build (the #419 error seen after a rejected wallet request).
+  useEffect(() => {
+    if (!sending || progress >= 100) return;
+    if (progress >= 78) setStage("Waiting for 1AM approval...");
+    else if (progress >= 44) setStage("Generating your sealed proof...");
+    else if (progress >= 22) setStage("Loading secure proof tools...");
+  }, [progress, sending]);
   // Empty wallets die later with a cryptic ledger error — warn up front.
   const noDust = (() => {
     try {
