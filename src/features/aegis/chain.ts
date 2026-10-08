@@ -15,26 +15,29 @@ const envIndexer = (import.meta.env["VITE_MIDNIGHT_INDEXER_URL"] as string | und
 const envContract = (import.meta.env["VITE_AEGISBID_CONTRACT"] as string | undefined) ?? "";
 
 /**
- * Flagship deployment: the verified preprod tender. Values below are the
- * true on-chain parameters (confirmed via the indexer at deploy time), so a
- * fresh visitor sees the live tender without configuring anything. Override
- * via Network settings or env vars.
+ * Flagship deployment: the verified V2 preprod tender. A fresh visitor sees
+ * the supported contract without configuring anything. The V1 demo stays
+ * immutable on-chain but is deliberately not surfaced by this application.
  */
 export const FLAGSHIP_TENDER = {
   indexerUrl: "https://indexer.preprod.midnight.network/api/v4/graphql",
-  contractAddress: "daf54fc95751b84c53da2f402aea96e5f23d19185783453ba067c123d89d0fc4",
-  title: "Shielded tender · preprod flagship",
-  issuer: "AegisBid demo issuer",
-  deadline: "2026-09-27T15:52:00Z",
-  threshold: "Reserve 1,000 credits",
+  contractAddress: "21b2efc6d75311c13c42f131ea48406539a5a461ecb32f7fb7e0e460e9bdc957",
+  title: "Parks Authority · V2 preprod tender",
+  issuer: "Parks Authority",
+  deadline: "2026-10-15T22:42:00.000Z",
+  threshold: "Reserve 5,000 credits",
   mode: "Highest bid" as const,
-  specification: "Deployed from the Live deploy page; verified on-chain via the indexer.",
-  contractVersion: 1 as const,
+  specification: "Central park landscaping plus 12-month maintenance.",
+  contractVersion: 2 as const,
 };
 
 /** V2 contracts that predate the versioned share-link format. */
 export const KNOWN_V2_CONTRACTS = new Set([
   "21b2efc6d75311c13c42f131ea48406539a5a461ecb32f7fb7e0e460e9bdc957",
+]);
+
+const RETIRED_V1_CONTRACTS = new Set([
+  "daf54fc95751b84c53da2f402aea96e5f23d19185783453ba067c123d89d0fc4",
 ]);
 
 export function publishedContractVersion(address: string, declared?: unknown): 1 | 2 {
@@ -49,14 +52,21 @@ export function getChainConfig(): ChainConfig {
       if (raw) {
         const saved = JSON.parse(raw) as Partial<ChainConfig>;
         if (saved.indexerUrl && saved.contractAddress) {
-          return { indexerUrl: saved.indexerUrl, contractAddress: saved.contractAddress };
+          // Migrate existing browsers away from the former V1 demo instead
+          // of reintroducing it after a refresh.
+          if (!RETIRED_V1_CONTRACTS.has(saved.contractAddress.toLowerCase())) {
+            return { indexerUrl: saved.indexerUrl, contractAddress: saved.contractAddress };
+          }
+          window.localStorage.removeItem(STORAGE_KEY);
         }
       }
     } catch {
       /* ignore unreadable local settings */
     }
   }
-  if (envIndexer && envContract) return { indexerUrl: envIndexer, contractAddress: envContract };
+  if (envIndexer && envContract && !RETIRED_V1_CONTRACTS.has(envContract.toLowerCase())) {
+    return { indexerUrl: envIndexer, contractAddress: envContract };
+  }
   return {
     indexerUrl: FLAGSHIP_TENDER.indexerUrl,
     contractAddress: FLAGSHIP_TENDER.contractAddress,
@@ -198,8 +208,8 @@ export type PublishedTender = {
   reserve: string;
   deadline: string;
   deployedAt: number;
-  /** Present in all newly created/shareable V2 tenders; absent legacy rows are V1. */
-  contractVersion?: 2;
+  /** Every tender surfaced by the app is an authenticated V2 contract. */
+  contractVersion: 2;
 };
 
 const PUBLISHED_KEY = "aegis-published-tenders";
@@ -216,7 +226,7 @@ export function isValidPublishedTender(entry: unknown): entry is PublishedTender
     typeof record["reserve"] === "string" &&
     typeof record["deadline"] === "string" &&
     typeof record["deployedAt"] === "number" &&
-    (record["contractVersion"] === undefined || record["contractVersion"] === 2)
+    record["contractVersion"] === 2
   );
 }
 
@@ -261,7 +271,7 @@ export function savePublishedTenders(items: PublishedTender[]): void {
 }
 
 /**
- * Parses a tender share link (`?contract=<64-hex>&issuer=&deadline=&mode=&reserve=`).
+ * Parses a V2 tender share link (`?contract=<64-hex>&issuer=&deadline=&mode=&reserve=&v=2`).
  * Tender policy is public by design, so encoding it in the link is safe —
  * it lets anyone who opens the link see the full honest tender (policy from
  * the link, live counts from the indexer) without a backend registry.
@@ -276,6 +286,9 @@ export function parseSharedTender(search: string): PublishedTender | null {
   }
   const address = (query.get("contract") ?? "").trim().toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(address)) return null;
+  // V1 links are historical records only. Do not re-import them into the
+  // directory or present a disabled bid form to users.
+  if (publishedContractVersion(address, query.get("v")) !== 2) return null;
   const reserve = query.get("reserve") ?? "";
   const deadline = query.get("deadline") ?? "";
   return {
@@ -285,7 +298,7 @@ export function parseSharedTender(search: string): PublishedTender | null {
     reserve: /^\d+$/.test(reserve) ? reserve : "0",
     deadline: deadline && !Number.isNaN(Date.parse(deadline)) ? deadline : "",
     deployedAt: Date.now(),
-    ...(publishedContractVersion(address, query.get("v")) === 2 ? { contractVersion: 2 } : {}),
+    contractVersion: 2,
   };
 }
 
@@ -330,7 +343,6 @@ export function publishedToTender(entry: PublishedTender): Tender {
 
 /** Turns raw indexer activity into the tender records the explorer renders. */
 export function activityToTenders(activity: ChainActivity): Tender[] {
-  const deploys = activity.actions.filter((item) => item.kind.toLowerCase().includes("deploy"));
   const calls = activity.actions.filter((item) => !item.kind.toLowerCase().includes("deploy"));
   const settled = activity.actions.some((item) => item.kind.toLowerCase().includes("settle"));
   if (activity.state.address === FLAGSHIP_TENDER.contractAddress) {
@@ -355,23 +367,7 @@ export function activityToTenders(activity: ChainActivity): Tender[] {
       },
     ];
   }
-  const anchor = deploys[deploys.length - 1] ?? activity.actions[activity.actions.length - 1];
-  const deployedAt = anchor?.timestamp ? new Date(anchor.timestamp) : null;
-  return [
-    {
-      id: `${activity.state.address.slice(0, 10)}...${activity.state.address.slice(-6)}`,
-      title: "On-chain tender",
-      issuer: "Midnight contract",
-      deadline: new Date((deployedAt?.getTime() ?? Date.now()) + 7 * 86_400_000).toISOString(),
-      threshold: activity.state.blockHeight
-        ? `Last update at block ${activity.state.blockHeight}`
-        : "Live contract state",
-      commitments: calls.length,
-      status: settled ? "Settled" : "Active",
-      mode: "Lowest compliant",
-      specification: "Tender data read live from the Midnight indexer for this contract.",
-      contractAddress: activity.state.address,
-      contractVersion: 1,
-    },
-  ];
+  // A manually configured legacy address remains inspectable in an explorer
+  // but is not a platform opportunity.
+  return [];
 }

@@ -61,7 +61,9 @@ export const listRegistryTenders = createServerFn({ method: "GET" }).handler(asy
       const tender = toPublishedTender(item);
       if (tender) tenders.unshift(tender);
     }
-    return tenders;
+    // Registry data predates V2. Keep historical V1 records out of the
+    // product while retaining them untouched in the underlying registry.
+    return tenders.filter((tender) => tender.contractVersion === 2);
   } catch {
     return [];
   }

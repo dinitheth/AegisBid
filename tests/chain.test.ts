@@ -41,8 +41,7 @@ describe("chain flagship", () => {
     expect(tender?.title).toBe(FLAGSHIP_TENDER.title);
     expect(tender?.mode).toBe("Highest bid");
     expect(tender?.commitments).toBe(2);
-    // Flagship deadline (Sep 2026) has passed: no longer open for bids.
-    expect(tender?.status).toBe("Evaluating");
+    expect(tender?.status).toBe("Active");
     expect(tender?.contractAddress).toBe(FLAGSHIP_TENDER.contractAddress);
   });
 });
@@ -55,6 +54,7 @@ describe("published tenders", () => {
     reserve: "1000",
     deadline: new Date(Date.now() + 86_400_000).toISOString(),
     deployedAt: Date.now(),
+    contractVersion: 2,
   };
 
   it("maps a published tender to a biddable directory record", () => {
@@ -65,7 +65,7 @@ describe("published tenders", () => {
     expect(tender.status).toBe("Active");
     expect(tender.mode).toBe("Highest bid");
     expect(tender.threshold).toContain("1,000");
-    expect(tender.contractVersion).toBe(1);
+    expect(tender.contractVersion).toBe(2);
   });
 
   it("marks past-deadline publishes as ready for evaluation", () => {
@@ -130,6 +130,7 @@ describe("shared tender links", () => {
       deadline: "2026-10-20T12:00:00.000Z",
       mode: "lowest",
       reserve: "2500",
+      v: "2",
     });
     const parsed = parseSharedTender(`?${params.toString()}`);
     expect(parsed).toMatchObject({
@@ -144,7 +145,7 @@ describe("shared tender links", () => {
   it("rejects malformed addresses and sanitizes fields", () => {
     expect(parseSharedTender("?contract=xyz")).toBeNull();
     expect(parseSharedTender("")).toBeNull();
-    const parsed = parseSharedTender(`?contract=${address}&mode=bogus&reserve=abc&deadline=nope`);
+    const parsed = parseSharedTender(`?contract=${address}&v=2&mode=bogus&reserve=abc&deadline=nope`);
     expect(parsed?.mode).toBe("highest");
     expect(parsed?.reserve).toBe("0");
     expect(parsed?.issuer).toBe("Shared tender");
@@ -156,6 +157,7 @@ describe("shared tender links", () => {
     expect(publishedContractVersion(address, 2)).toBe(2);
     expect(publishedContractVersion(address)).toBe(1);
     expect(parseSharedTender(`?contract=${address}&v=2`)?.contractVersion).toBe(2);
+    expect(parseSharedTender(`?contract=${address}`)).toBeNull();
   });
 });
 
@@ -167,6 +169,7 @@ describe("tender registry merge", () => {
     reserve: "1000",
     deadline: new Date(Date.now() + 86_400_000).toISOString(),
     deployedAt: Date.now(),
+    contractVersion: 2,
   });
   const addrA = "a".repeat(64);
   const addrB = "b".repeat(64);
@@ -186,6 +189,9 @@ describe("tender registry merge", () => {
 
   it("validates registry records strictly", () => {
     expect(isValidPublishedTender(local(addrA, "ok"))).toBe(true);
+    const legacy = { ...local(addrA, "legacy") } as Partial<PublishedTender>;
+    delete legacy.contractVersion;
+    expect(isValidPublishedTender(legacy)).toBe(false);
     expect(isValidPublishedTender({ ...local(addrA, "ok"), mode: "bogus" })).toBe(false);
     expect(isValidPublishedTender({ ...local(addrA, "ok"), address: "short" })).toBe(false);
     expect(isValidPublishedTender(null)).toBe(false);

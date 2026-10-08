@@ -114,6 +114,26 @@ export type WalletOperationReporter = (message: string) => void;
 const PROVING_TIMEOUT_MS = 120_000;
 const PROVING_PROVIDER_TIMEOUT_MS = 30_000;
 
+// 1AM validates the proving configuration when getProvingProvider is called.
+// Calling it again for every bid asks the extension to repeat that fragile
+// verifier lookup; preprod can return a transient stale state even after a
+// prior request succeeded. A successful provider is safe to reuse for the
+// same connected wallet session. Failed attempts are never cached.
+const oneAmProvingProviders = new WeakMap<object, Promise<unknown>>();
+
+function getCachedOneAmProvingProvider(api: OneAmConnectedApi, keyProvider: unknown): Promise<unknown> {
+  const existing = oneAmProvingProviders.get(api);
+  if (existing) return existing;
+  const pending = withSafeTimeout(
+    api.getProvingProvider(keyProvider),
+    PROVING_PROVIDER_TIMEOUT_MS,
+    "1AM did not make its proving service available in 30 seconds. No transaction was sent. Reload 1AM and try again.",
+  );
+  oneAmProvingProviders.set(api, pending);
+  void pending.catch(() => oneAmProvingProviders.delete(api));
+  return pending;
+}
+
 function withSafeTimeout<T>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = globalThis.setTimeout(() => reject(new Error(message)), timeoutMs);
@@ -301,11 +321,7 @@ export async function buildOneAmProviders(
   } = await buildConnectorBase(api, bid, report);
 
   report?.("Preparing 1AM's proving service...");
-  const provingProvider = await withSafeTimeout(
-    api.getProvingProvider(zkConfigProvider),
-    PROVING_PROVIDER_TIMEOUT_MS,
-    "1AM did not make its proving service available in 30 seconds. No transaction was sent. Reload 1AM and try again.",
-  );
+  const provingProvider = await getCachedOneAmProvingProvider(api, zkConfigProvider);
   const proofProvider = makeWalletProofProvider(provingProvider, report);
   return {
     providers: {

@@ -155,6 +155,18 @@ describe("midnight providers", () => {
     expect(built.networkId).toBe("preprod");
   });
 
+  it("reuses a successful 1AM proving provider for the connected wallet session", async () => {
+    let provingReads = 0;
+    const api = mockConnectorApi("wallet");
+    api.getProvingProvider = async () => {
+      provingReads += 1;
+      return {};
+    };
+    await withBrowserWindow(() => buildOneAmProviders(api));
+    await withBrowserWindow(() => buildOneAmProviders(api));
+    expect(provingReads).toBe(1);
+  });
+
   it("falls back to the local proof server when Lace declines proving", async () => {
     const built = await withBrowserWindow(() =>
       buildLaceProviders(mockConnectorApi("reject"), undefined, {
