@@ -25,7 +25,7 @@ import type { OneAmConnectedApi } from "./oneAmWallet";
 import * as forensicsModule from "./forensics";
 
 export const ZK_BASE =
-  (import.meta.env["VITE_ZK_CONFIG_BASE"] as string | undefined) ||
+  (import.meta.env["VITE_AEGISBID_V2_ZK_CONFIG_BASE"] as string | undefined) ||
   "https://cdn.jsdelivr.net/gh/dinitheth/AegisBid@main/managed/aegis-bid-v2";
 
 export const bytesToHex = (bytes: Uint8Array) =>

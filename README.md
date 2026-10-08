@@ -14,6 +14,8 @@ AegisBid is a zero-knowledge shielded tender and sealed-bid protocol designed fo
 
 Generated V2 bindings and proving assets live in `managed/aegis-bid-v2/`. Validate source shape with `npm run compact:v2:check`; the full key generation was verified with Compact 0.31.1 on the Azure builder VM.
 
+For Vercel, do not retain an old `VITE_ZK_CONFIG_BASE` configured for V1. V2 uses its committed jsDelivr location by default; only set `VITE_AEGISBID_V2_ZK_CONFIG_BASE` when intentionally hosting the V2 `keys/` and `zkir/` assets elsewhere.
+
 > The browser application in this repository is a deterministic protocol workbench. It demonstrates the intended contract states, privacy boundary, proof lifecycle, settlement outputs, and QA cases locally. It does not claim that the included simulation is a live Midnight deployment.
 
 ## Judge quickstart (Midnight Buildathon, Wave 1)
