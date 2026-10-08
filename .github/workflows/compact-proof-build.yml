@@ -49,11 +49,22 @@ jobs:
       - name: Compile contract and generate proving keys
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           rm -rf "$OUTPUT_DIRECTORY"
-          compactc "$CONTRACT_SOURCE" "$OUTPUT_DIRECTORY"
-          test -f "$OUTPUT_DIRECTORY/contract-info.json"
-          find "$OUTPUT_DIRECTORY" -type f -print | sort
+          {
+            echo "=== Compact version ==="
+            compactc --version
+            echo "=== System memory ==="
+            free -h
+            echo "=== Compile output ==="
+            compactc "$CONTRACT_SOURCE" "$OUTPUT_DIRECTORY"
+          } 2>&1 | tee "$RUNNER_TEMP/compact-proof-build.log"
+          compile_status=${PIPESTATUS[0]}
+          if [ "$compile_status" -eq 0 ]; then
+            test -f "$OUTPUT_DIRECTORY/contract-info.json"
+            find "$OUTPUT_DIRECTORY" -type f -print | sort
+          fi
+          exit "$compile_status"
 
       - name: Retain generated artifacts for inspection
         if: always()
@@ -62,4 +73,13 @@ jobs:
           name: aegis-bid-compact-build
           path: .compact-build
           if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Retain compiler diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compact-proof-build-log
+          path: ${{ runner.temp }}/compact-proof-build.log
+          if-no-files-found: error
           retention-days: 7
