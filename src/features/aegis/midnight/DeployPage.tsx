@@ -21,6 +21,7 @@ import { loadPublishedTenders, savePublishedTenders, type PublishedTender } from
 
 import {
   connectDetectedWallet,
+  refreshDetectedWallet,
   detectWalletConnectors,
   friendlyWalletError,
   useOneAmWallet,
@@ -216,9 +217,18 @@ export function DeployPage() {
       throw new Error(`${label}: ${last instanceof Error ? last.message : String(last)}`);
     };
     try {
+      // A connected extension handle is not durable across an extension
+      // restart or an abandoned balance request. Refresh it from this click
+      // before we create any proof, so the balance request uses a live port.
+      step = "refreshing the wallet connection";
+      setPublishStatus("Checking the wallet connection...");
+      const refreshed = await refreshDetectedWallet(info?.walletName);
+      setConnected(refreshed.api, refreshed.info);
+      const activeApi = refreshed.api;
+      const activeInfo = refreshed.info;
       step = "connecting providers";
       setPublishStatus("Downloading proving keys (one-time, ~14 MB)...");
-      const walletLabel = info?.walletName === "Lace" ? "Lace" : "1AM";
+      const walletLabel = activeInfo.walletName === "Lace" ? "Lace" : "1AM";
       // V2 stores a commitment to this capability, not the capability itself.
       // It is required to move a tender into evaluation or settle it, so keep
       // a local recovery copy keyed by the deployed address below.
@@ -238,8 +248,8 @@ export function DeployPage() {
       ]);
       const { providers, compiled, provingVia } = await withRetry("connecting providers", () =>
         walletLabel === "Lace"
-          ? buildLaceProviders(api, deploymentWitnesses)
-          : buildOneAmProviders(api, deploymentWitnesses, setPublishStatus),
+          ? buildLaceProviders(activeApi, deploymentWitnesses)
+          : buildOneAmProviders(activeApi, deploymentWitnesses, setPublishStatus),
       );
       if (provingVia === "proof-server") {
         setPublishStatus("Wallet delegates proving: using your local proof server...");

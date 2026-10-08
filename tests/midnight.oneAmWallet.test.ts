@@ -4,6 +4,7 @@ import {
   WALLET_DETAILS_TIMEOUT_MS,
   connectDetectedWallet,
   friendlyWalletError,
+  refreshDetectedWallet,
   type DetectedWallet,
   type OneAmInitialApi,
 } from "../src/features/aegis/midnight/oneAmWallet";
@@ -66,6 +67,33 @@ describe("connectDetectedWallet", () => {
     const rejected = expect(pending).rejects.toThrow("did not return account details in 20s");
     await vi.advanceTimersByTimeAsync(WALLET_DETAILS_TIMEOUT_MS);
     await rejected;
+  });
+});
+
+describe("refreshDetectedWallet", () => {
+  const originalWindow = globalThis.window;
+
+  afterEach(() => {
+    Object.defineProperty(globalThis, "window", { value: originalWindow, configurable: true });
+  });
+
+  it("creates a fresh session for the active wallet", async () => {
+    const connected = {
+      getConfiguration: async () => ({ networkId: "preprod" }),
+      getUnshieldedAddress: async () => ({ unshieldedAddress: "fresh-address" }),
+      getDustBalance: async () => ({ balance: 12n }),
+    };
+    const connect = vi.fn(async () => connected);
+    Object.defineProperty(globalThis, "window", {
+      value: { midnight: { "1am": { connect } } },
+      configurable: true,
+    });
+
+    const result = await refreshDetectedWallet("1AM");
+
+    expect(connect).toHaveBeenCalledOnce();
+    expect(connect).toHaveBeenCalledWith("preprod");
+    expect(result.info.unshieldedAddress).toBe("fresh-address");
   });
 });
 

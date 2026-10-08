@@ -164,6 +164,30 @@ export async function connectDetectedWallet(
 }
 
 /**
+ * Start a new connector session immediately before an irreversible wallet
+ * operation.  The extension invalidates its connected handle when it restarts,
+ * locks, or abandons an earlier balance request; keeping that old handle in
+ * React state made the next publish/bid intermittently hang in the wallet.
+ *
+ * This deliberately performs the normal `connect("preprod")` handshake. It
+ * is called only from a user click, so a wallet that needs to ask for consent
+ * is allowed to show its approval UI.
+ */
+export async function refreshDetectedWallet(
+  walletName?: string,
+): Promise<{ api: OneAmConnectedApi; info: WalletInfo }> {
+  const detected = detectWalletConnectors();
+  const entry =
+    detected.find((item) => item.label === walletName) ??
+    detected.find((item) => item.kind === "1am") ??
+    detected[0];
+  if (!entry) {
+    throw new Error("No Midnight wallet was detected. Unlock 1AM and try again.");
+  }
+  return connectDetectedWallet(entry);
+}
+
+/**
  * Plain-language wallet errors for normal users. Extension stack traces and
  * raw SDK text never reach the screen; callers can still `console.error` the
  * original cause for debugging.

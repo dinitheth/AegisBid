@@ -52,6 +52,7 @@ import { useChainTenders, type ChainTenders } from "./useChainTenders";
 import {
   OneAmWalletProvider,
   connectDetectedWallet,
+  refreshDetectedWallet,
   detectWalletConnectors,
   friendlyWalletError,
   useOneAmWallet,
@@ -630,8 +631,41 @@ function BidPage({
     // Binding commitment via the protocol engine (SHA-256 over amount:salt:key),
     // matching the `submitBid` commitment model in contracts/aegis_bid.compact.
     const salt = generateNonce();
+    let liveApi = oneAm.api;
+    let liveInfo = oneAm.info;
+    const liveContract = tender.contractVersion === 2 ? tender.contractAddress : undefined;
+    if (liveApi && liveContract) {
+      try {
+        setStage("Checking the wallet connection...");
+        const refreshed = await refreshDetectedWallet(liveInfo?.walletName);
+        liveApi = refreshed.api;
+        liveInfo = refreshed.info;
+        oneAm.setConnected(refreshed.api, refreshed.info);
+      } catch (cause) {
+        const reason = friendlyWalletError(cause);
+        setFailure(reason);
+        onSubmit({
+          tenderId: tender.id,
+          tenderTitle: tender.title,
+          tenderStatus: tender.status,
+          amount,
+          receipt: "",
+          salt,
+          bidderKey: "",
+          identitySecret: "",
+          commitment: "",
+          submittedAt,
+          onChain: false,
+          accepted: false,
+          note: reason,
+        });
+        setStage(null);
+        setSending(false);
+        return;
+      }
+    }
     const bidderKey =
-      oneAm.info?.unshieldedAddress ??
+      liveInfo?.unshieldedAddress ??
       wallet.wallet?.address ??
       wallet.wallet?.coinPublicKey ??
       `local-device:${submittedAt}`;
@@ -647,10 +681,8 @@ function BidPage({
       identitySecret: "",
       submittedAt,
     };
-    const liveApi = oneAm.api;
-    const liveContract = tender.contractVersion === 2 ? tender.contractAddress : undefined;
-    const liveKind = oneAm.info?.walletName === "Lace" ? "lace" : "1am";
-    const liveLabel = oneAm.info?.walletName ?? "wallet";
+    const liveKind = liveInfo?.walletName === "Lace" ? "lace" : "1am";
+    const liveLabel = liveInfo?.walletName ?? "wallet";
     if (tender.contractAddress && tender.contractVersion !== 2) {
       const reason =
         "This is a legacy tender and cannot accept offers through the V2 proof system. Open a V2 share link to submit a bid.";
