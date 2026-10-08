@@ -16,6 +16,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: compact-proof-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   compile:
     name: Compile Compact contract and proving keys
