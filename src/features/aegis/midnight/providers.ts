@@ -106,6 +106,30 @@ export type AegisProviders = {
   networkId: string;
 };
 
+export type WalletOperationReporter = (message: string) => void;
+
+// A prover only creates a proof; it cannot publish a transaction by itself.
+// Timing this out is therefore safe: a late proof is discarded and the user
+// can retry without risking a duplicate deployment or bid.
+const PROVING_TIMEOUT_MS = 120_000;
+const PROVING_PROVIDER_TIMEOUT_MS = 30_000;
+
+function withSafeTimeout<T>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = globalThis.setTimeout(() => reject(new Error(message)), timeoutMs);
+    operation.then(
+      (value) => {
+        globalThis.clearTimeout(timer);
+        resolve(value);
+      },
+      (cause) => {
+        globalThis.clearTimeout(timer);
+        reject(cause);
+      },
+    );
+  });
+}
+
 /** Local proof server for wallets that don't prove in-extension (Lace). */
 export const PROOF_SERVER_URL =
   (import.meta.env["VITE_MIDNIGHT_PROOF_SERVER"] as string | undefined) ||
@@ -157,7 +181,11 @@ export function createMemoryPrivateStateProvider() {
   };
 }
 
-export async function buildConnectorBase(api: OneAmConnectedApi, bid?: PrivateBidWitnesses) {
+export async function buildConnectorBase(
+  api: OneAmConnectedApi,
+  bid?: PrivateBidWitnesses,
+  report?: WalletOperationReporter,
+) {
   const config = await api.getConfiguration();
   setNetworkId(config.networkId || "preprod");
 
@@ -170,6 +198,7 @@ export async function buildConnectorBase(api: OneAmConnectedApi, bid?: PrivateBi
     getCoinPublicKey: () => keys.shieldedCoinPublicKey,
     getEncryptionPublicKey: () => keys.shieldedEncryptionPublicKey,
     async balanceTx(tx: { serialize: () => Uint8Array }) {
+      report?.("Preparing the transaction with 1AM...");
       const result = await api.balanceUnsealedTransaction(bytesToHex(tx.serialize()));
       const { Transaction } = await import("@midnight-ntwrk/ledger-v8");
       return Transaction.deserialize("signature", "proof", "binding", hexToBytes(result.tx));
@@ -177,6 +206,9 @@ export async function buildConnectorBase(api: OneAmConnectedApi, bid?: PrivateBi
   };
   const midnightProvider = {
     async submitTx(tx: { serialize: () => Uint8Array; identifiers: () => string[] }) {
+      // This is the first point at which 1AM can present a signing/approval
+      // request. Do not tell users to approve while a proof is still running.
+      report?.("Proof ready — approve the transaction in 1AM...");
       await api.submitTransaction(bytesToHex(tx.serialize()));
       return tx.identifiers()[0] ?? "";
     },
@@ -221,7 +253,7 @@ export async function buildConnectorBase(api: OneAmConnectedApi, bid?: PrivateBi
  * Pass a bid to attach its real witnesses; otherwise zero stubs are used
  * (the constructor never invokes witnesses).
  */
-function makeWalletProofProvider(provingProvider: unknown) {
+function makeWalletProofProvider(provingProvider: unknown, report?: WalletOperationReporter) {
   return {
     // Proving has no chain effects: retry transient (rate-limit) failures.
     async proveTx(unprovenTx: { prove: (prover: unknown, cost: unknown) => Promise<unknown> }) {
@@ -229,7 +261,12 @@ function makeWalletProofProvider(provingProvider: unknown) {
       for (let attempt = 1; attempt <= 3; attempt += 1) {
         try {
           const { CostModel } = await import("@midnight-ntwrk/ledger-v8");
-          return await unprovenTx.prove(provingProvider, CostModel.initialCostModel());
+          report?.("Generating the zero-knowledge proof with 1AM. The approval appears after this step...");
+          return await withSafeTimeout(
+            unprovenTx.prove(provingProvider, CostModel.initialCostModel()),
+            PROVING_TIMEOUT_MS,
+            "1AM did not finish generating the proof in two minutes. No transaction was sent. Reload the 1AM extension and try again.",
+          );
         } catch (error) {
           last = error;
           const message = error instanceof Error ? error.message : String(error);
@@ -250,6 +287,7 @@ function makeWalletProofProvider(provingProvider: unknown) {
 export async function buildOneAmProviders(
   api: OneAmConnectedApi,
   bid?: PrivateBidWitnesses,
+  report?: WalletOperationReporter,
 ): Promise<AegisProviders> {
   const {
     walletCoinPublicKey,
@@ -260,10 +298,15 @@ export async function buildOneAmProviders(
     walletProvider,
     midnightProvider,
     compiled,
-  } = await buildConnectorBase(api, bid);
+  } = await buildConnectorBase(api, bid, report);
 
-  const provingProvider = await api.getProvingProvider(zkConfigProvider);
-  const proofProvider = makeWalletProofProvider(provingProvider);
+  report?.("Preparing 1AM's proving service...");
+  const provingProvider = await withSafeTimeout(
+    api.getProvingProvider(zkConfigProvider),
+    PROVING_PROVIDER_TIMEOUT_MS,
+    "1AM did not make its proving service available in 30 seconds. No transaction was sent. Reload 1AM and try again.",
+  );
+  const proofProvider = makeWalletProofProvider(provingProvider, report);
   return {
     providers: {
       publicDataProvider,

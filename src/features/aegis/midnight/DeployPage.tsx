@@ -239,7 +239,7 @@ export function DeployPage() {
       const { providers, compiled, provingVia } = await withRetry("connecting providers", () =>
         walletLabel === "Lace"
           ? buildLaceProviders(api, deploymentWitnesses)
-          : buildOneAmProviders(api, deploymentWitnesses),
+          : buildOneAmProviders(api, deploymentWitnesses, setPublishStatus),
       );
       if (provingVia === "proof-server") {
         setPublishStatus("Wallet delegates proving: using your local proof server...");
@@ -255,8 +255,10 @@ export function DeployPage() {
         spec,
       });
 
-      step = `proving via ${walletLabel} (approve in the wallet)`;
-      setPublishStatus(`Proving via ${walletLabel} (approve in the wallet)...`);
+      step = `creating the proof via ${walletLabel}`;
+      setPublishStatus(
+        `Creating the proof via ${walletLabel}. The approval appears after the proof is ready...`,
+      );
       const deployed = await deployContract(providers, {
         compiledContract: compiled,
         args: [ledgerConfig],
