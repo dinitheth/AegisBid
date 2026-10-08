@@ -118,7 +118,13 @@ function loadBids(): SubmittedBid[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(BID_STORAGE_KEY);
-    return normalizeStoredBids(raw ? (JSON.parse(raw) as unknown) : []);
+    // A rejected preflight never creates a tender bid or a network
+    // transaction. Older releases recorded those failed attempts beside real
+    // offers, which made activity look as though the tender had rejected a
+    // bid. Keep the history truthful: it contains submitted offers only.
+    return normalizeStoredBids(raw ? (JSON.parse(raw) as unknown) : []).filter(
+      (bid) => bid.accepted,
+    );
   } catch {
     return [];
   }
@@ -130,6 +136,13 @@ function formatMoment(value: number) {
 
 function shortAddress(address: string) {
   return address.length > 16 ? `${address.slice(0, 8)}...${address.slice(-6)}` : address;
+}
+
+function isVerifierConfigurationFailure(cause: unknown): boolean {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return /mismatched verifier|verifier keys|proof configuration could not be verified/i.test(
+    message,
+  );
 }
 
 /** Preloads the lightweight deploy form; proving code remains click-only. */
@@ -644,21 +657,6 @@ function BidPage({
       } catch (cause) {
         const reason = friendlyWalletError(cause);
         setFailure(reason);
-        onSubmit({
-          tenderId: tender.id,
-          tenderTitle: tender.title,
-          tenderStatus: tender.status,
-          amount,
-          receipt: "",
-          salt,
-          bidderKey: "",
-          identitySecret: "",
-          commitment: "",
-          submittedAt,
-          onChain: false,
-          accepted: false,
-          note: reason,
-        });
         setStage(null);
         setSending(false);
         return;
@@ -687,7 +685,6 @@ function BidPage({
       const reason =
         "This is a legacy tender and cannot accept offers through the V2 proof system. Open a V2 share link to submit a bid.";
       setFailure(reason);
-      onSubmit({ ...base, receipt: commitment, onChain: false, accepted: false, note: reason });
       setSending(false);
       return;
     }
@@ -695,7 +692,6 @@ function BidPage({
       if (biddingClosed) {
         const reason = `Bidding closed on ${new Date(tender.deadline).toLocaleString()} — the contract no longer accepts offers for this tender.`;
         setFailure(reason);
-        onSubmit({ ...base, receipt: commitment, onChain: false, accepted: false, note: reason });
         setSending(false);
         return;
       }
@@ -706,17 +702,34 @@ function BidPage({
         // must never evaluate during SSR.
         const { submitLiveBid } = await import("./midnight/providers");
         setStage(`Submitting sealed bid on preprod (approve in ${liveLabel})`);
-        const txHash = await submitLiveBid({
-          api: liveApi,
-          contractAddress: liveContract,
-          witnesses: {
-            amount: BigInt(amount),
-            salt: stringToBytes32(salt),
+        const submitWith = (api: NonNullable<typeof liveApi>, kind: "lace" | "1am") =>
+          submitLiveBid({
+            api,
+            contractAddress: liveContract,
+            witnesses: {
+              amount: BigInt(amount),
+              salt: stringToBytes32(salt),
+              bidderKey: stringToBytes32(bidderKey),
+            },
             bidderKey: stringToBytes32(bidderKey),
-          },
-          bidderKey: stringToBytes32(bidderKey),
-          walletKind: liveKind,
-        });
+            walletKind: kind,
+          });
+        let txHash: string;
+        try {
+          txHash = await submitWith(liveApi, liveKind);
+        } catch (firstCause) {
+          // 1AM can occasionally hand a new DApp session a stale verifier
+          // snapshot. This occurs before balance/approval/submission, so one
+          // brand-new session retry is safe and cannot create a duplicate bid.
+          if (!isVerifierConfigurationFailure(firstCause)) throw firstCause;
+          setStage("Refreshing the wallet proof configuration...");
+          const retried = await refreshDetectedWallet(liveInfo?.walletName);
+          oneAm.setConnected(retried.api, retried.info);
+          txHash = await submitWith(
+            retried.api,
+            retried.info.walletName === "Lace" ? "lace" : "1am",
+          );
+        }
         onSubmit({
           ...base,
           receipt: txHash,
@@ -730,7 +743,6 @@ function BidPage({
         const detail = cause instanceof Error ? (cause.stack ?? cause.message) : String(cause);
         setFailureDetail(detail.slice(0, 800));
         if (import.meta.env.DEV) console.error("Live bid failed:", cause);
-        onSubmit({ ...base, receipt: commitment, onChain: false, accepted: false, note: reason });
       } finally {
         setStage(null);
         setSending(false);
@@ -772,7 +784,6 @@ function BidPage({
     } catch (cause) {
       const reason = friendlyWalletError(cause);
       setFailure(reason);
-      onSubmit({ ...base, receipt: commitment, onChain: false, accepted: false, note: reason });
     } finally {
       setStage(null);
       setSending(false);
