@@ -558,10 +558,15 @@ function Tenders({
           ))}
         </div>
       </div>
-      <div className="mt-6 grid gap-5 lg:grid-cols-2">
-        {tenders.map((tender) => (
-          <TenderCard key={tender.id} tender={tender} onOpen={onOpen} />
-        ))}
+      <div
+        className="nice-scroll mt-6 max-h-[min(58vh,46rem)] overflow-y-auto pr-2 sm:pr-3"
+        aria-label="Tender directory results"
+      >
+        <div className="grid gap-5 lg:grid-cols-2">
+          {tenders.map((tender) => (
+            <TenderCard key={tender.id} tender={tender} onOpen={onOpen} />
+          ))}
+        </div>
       </div>
       {tenders.length === 0 && (
         <div className="mt-6 rounded-lg border border-border bg-card p-10 text-center text-muted-foreground">
@@ -759,7 +764,7 @@ function BidPage({
               ? "Legacy tender — V2 bids are unavailable"
               : tender.contractAddress
                 ? "Live preprod tender — bids settle on-chain"
-              : "Demo tender — bids record locally on this device"}
+                : "Demo tender — bids record locally on this device"}
           </p>
           {legacyTender && (
             <p className="mt-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
@@ -860,7 +865,11 @@ function BidPage({
             disabled={!amount || !agreed || sending || !enough || biddingClosed || legacyTender}
             onClick={() => void submit()}
           >
-            {sending ? (stage ?? "Working...") : legacyTender ? "V2 tender required" : "Submit private offer"}
+            {sending
+              ? (stage ?? "Working...")
+              : legacyTender
+                ? "V2 tender required"
+                : "Submit private offer"}
             <LockKeyhole />
           </Button>
           {failure && (
@@ -939,7 +948,10 @@ function BidHistory({
         </div>
       ) : (
         <>
-          <div className="nice-scroll mt-8 max-h-[min(56vh,46rem)] space-y-4 overflow-y-auto pr-2 sm:pr-3" aria-label="Bid history list">
+          <div
+            className="nice-scroll mt-8 max-h-[min(56vh,46rem)] space-y-4 overflow-y-auto pr-2 sm:pr-3"
+            aria-label="Bid history list"
+          >
             {bids.map((bid) => (
               <article
                 key={`${bid.commitment}-${bid.submittedAt}`}
@@ -1237,9 +1249,12 @@ function ComparePage({ bids, tenders }: { bids: SubmittedBid[]; tenders: Tender[
         </div>
       ) : (
         <>
-          <div className="mt-6 overflow-hidden rounded-lg border border-border bg-card">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-border bg-muted/50 text-xs text-card-foreground/60">
+          <div
+            className="nice-scroll mt-6 max-h-[min(52vh,34rem)] overflow-auto rounded-lg border border-border bg-card"
+            aria-label="Bid comparison results"
+          >
+            <table className="min-w-[46rem] w-full text-left text-sm">
+              <thead className="sticky top-0 z-10 border-b border-border bg-muted/95 text-xs text-card-foreground/60 backdrop-blur">
                 <tr>
                   <th className="p-4 font-medium">Offer</th>
                   <th className="p-4 font-medium">Sealed reference</th>
