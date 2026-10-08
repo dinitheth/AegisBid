@@ -386,14 +386,6 @@ export function DeployPage() {
             {failure}
           </p>
         )}
-        {failureArea === "connection" && failureDetail && (
-          <details className="mt-2 text-xs text-card-foreground/60">
-            <summary className="cursor-pointer underline">Technical details</summary>
-            <pre className="mt-1 whitespace-pre-wrap break-all rounded-md border border-border bg-muted/40 p-3 font-mono">
-              {failureDetail}
-            </pre>
-          </details>
-        )}
       </section>
 
       <section className="mt-6 rounded-lg border border-border bg-card p-6">
@@ -462,14 +454,6 @@ export function DeployPage() {
           <p className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
             {failure}
           </p>
-        )}
-        {failureArea === "publish" && failureDetail && (
-          <details className="mt-2 text-xs text-card-foreground/60">
-            <summary className="cursor-pointer underline">Technical details</summary>
-            <pre className="mt-1 whitespace-pre-wrap break-all rounded-md border border-border bg-muted/40 p-3 font-mono">
-              {failureDetail}
-            </pre>
-          </details>
         )}
         {contractAddress &&
           (() => {

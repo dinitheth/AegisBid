@@ -851,14 +851,6 @@ function BidPage({
               {failure}
             </p>
           )}
-          {failureDetail && (
-            <details className="mt-2 text-xs text-card-foreground/60">
-              <summary className="cursor-pointer underline">Technical details</summary>
-              <pre className="mt-1 whitespace-pre-wrap break-all rounded-md border border-border bg-muted/40 p-3 font-mono">
-                {failureDetail}
-              </pre>
-            </details>
-          )}
         </section>
         <aside className="self-start rounded-lg border border-border bg-section p-6">
           <h2 className="font-display text-xl font-semibold text-foreground">Before you submit</h2>
@@ -930,7 +922,7 @@ function BidHistory({
         </div>
       ) : (
         <>
-          <div className="mt-8 space-y-4">
+          <div className="nice-scroll mt-8 max-h-[min(56vh,46rem)] space-y-4 overflow-y-auto pr-2 sm:pr-3" aria-label="Bid history list">
             {bids.map((bid) => (
               <article
                 key={`${bid.commitment}-${bid.submittedAt}`}
@@ -942,7 +934,11 @@ function BidHistory({
                     <h2 className="mt-3 font-display text-xl font-semibold text-card-foreground">
                       {bid.tenderTitle}
                     </h2>
-                    <p className="mt-1 text-sm text-card-foreground/70">{bid.note}</p>
+                    <p className="mt-1 text-sm text-card-foreground/70">
+                      {bid.accepted
+                        ? bid.note
+                        : friendlyWalletError(bid.note || "The offer was not completed.")}
+                    </p>
                   </div>
                   <span
                     className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${bid.accepted ? "bg-success/12 text-success" : "bg-destructive/12 text-destructive"}`}

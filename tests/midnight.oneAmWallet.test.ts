@@ -85,7 +85,7 @@ describe("friendlyWalletError", () => {
     );
   });
 
-  it("asks for the technical text on wallet preparation failures", () => {
+  it("keeps wallet preparation failures customer-safe", () => {
     expect(
       friendlyWalletError(
         new Error(
@@ -93,13 +93,25 @@ describe("friendlyWalletError", () => {
         ),
       ),
     ).toBe(
-      "The wallet failed while preparing the transaction. Open Technical details below and share the text so the cause can be traced.",
+      "The wallet could not prepare this private transaction. No bid was sent. Refresh once, confirm 1AM is synced, then try again.",
     );
   });
 
   it("points explicit insufficient-funds errors at the faucet", () => {
     expect(friendlyWalletError(new Error("insufficient funds for transaction"))).toBe(
       "Your wallet couldn't prepare the transaction — it may hold no funds. Get test tokens from the preprod faucet, then try again.",
+    );
+  });
+
+  it("hides verifier-key and operation diagnostics from end users", () => {
+    expect(
+      friendlyWalletError(
+        new Error(
+          "Following operations: submitBid, beginEvaluation, settle, are undefined or have mismatched verifier keys for contract state ContractState (Array(6))",
+        ),
+      ),
+    ).toBe(
+      "This tender's proof configuration is not ready in the wallet yet. No bid was sent. Refresh the tender once, wait for 1AM to finish syncing, then try again.",
     );
   });
 
