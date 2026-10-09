@@ -14,9 +14,18 @@ import { setNetworkId } from "@midnight-ntwrk/midnight-js-network-id";
 import { FetchZkConfigProvider } from "@midnight-ntwrk/midnight-js-fetch-zk-config-provider";
 import { indexerPublicDataProvider } from "@midnight-ntwrk/midnight-js-indexer-public-data-provider";
 import { CompiledContract } from "@midnight-ntwrk/compact-js";
-import { deployContract, submitCallTx } from "@midnight-ntwrk/midnight-js-contracts";
+import {
+  deployContract,
+  submitCallTx,
+  verifyContractState,
+} from "@midnight-ntwrk/midnight-js-contracts";
 import { Contract, TenderMode } from "../../../../managed/aegis-bid-v2/contract/index.js";
-import { hexToBytes, stringToBytes32 } from "./contract";
+import {
+  CONTRACT_CIRCUITS,
+  hexToBytes,
+  stringToBytes32,
+  type ContractCircuit,
+} from "./contract";
 import type { OneAmConnectedApi } from "./oneAmWallet";
 import * as forensicsModule from "./forensics";
 
@@ -107,6 +116,26 @@ export type AegisProviders = {
 };
 
 export type WalletOperationReporter = (message: string) => void;
+
+/**
+ * Check the address against the exact V2 verifier keys before asking a wallet
+ * for its proving provider. This catches legacy contracts, stale share links,
+ * and incomplete deployments before the wallet gets stuck in proof setup.
+ */
+async function verifyLiveV2Contract(
+  zkConfigProvider: FetchZkConfigProvider<(typeof CONTRACT_CIRCUITS)[number]>,
+  publicDataProvider: ReturnType<typeof indexerPublicDataProvider>,
+  contractAddress: string,
+): Promise<void> {
+  const contractState = await publicDataProvider.queryContractState(contractAddress);
+  if (!contractState) {
+    throw new Error(
+      "No deployed tender was found at this address. Open the issuer's current share link.",
+    );
+  }
+  const verifierKeys = await zkConfigProvider.getVerifierKeys([...CONTRACT_CIRCUITS]);
+  verifyContractState(verifierKeys, contractState);
+}
 
 // A prover only creates a proof; it cannot publish a transaction by itself.
 // Timing this out is therefore safe: a late proof is discarded and the user
@@ -211,7 +240,7 @@ export async function buildConnectorBase(
   const config = await api.getConfiguration();
   setNetworkId(config.networkId || "preprod");
 
-  const zkConfigProvider = new FetchZkConfigProvider(ZK_BASE, fetch.bind(window));
+  const zkConfigProvider = new FetchZkConfigProvider<ContractCircuit>(ZK_BASE, fetch.bind(window));
   const publicDataProvider = indexerPublicDataProvider(config.indexerUri, config.indexerWsUri);
   const privateStateProvider = createMemoryPrivateStateProvider();
 
@@ -318,6 +347,7 @@ export async function buildOneAmProviders(
   api: OneAmConnectedApi,
   bid?: PrivateBidWitnesses,
   report?: WalletOperationReporter,
+  contractAddress?: string,
 ): Promise<AegisProviders> {
   const {
     walletCoinPublicKey,
@@ -329,6 +359,11 @@ export async function buildOneAmProviders(
     midnightProvider,
     compiled,
   } = await buildConnectorBase(api, bid, report);
+
+  if (contractAddress) {
+    report?.("Checking this tender's proof configuration...");
+    await verifyLiveV2Contract(zkConfigProvider, publicDataProvider, contractAddress);
+  }
 
   report?.("Preparing 1AM's proving service...");
   const provingProvider = await getCachedOneAmProvingProvider(api, zkConfigProvider);
@@ -361,6 +396,7 @@ export async function buildLaceProviders(
   api: OneAmConnectedApi,
   bid?: PrivateBidWitnesses,
   opts?: { proofServerUrl?: string },
+  contractAddress?: string,
 ): Promise<AegisProviders> {
   const {
     walletCoinPublicKey,
@@ -372,6 +408,10 @@ export async function buildLaceProviders(
     midnightProvider,
     compiled,
   } = await buildConnectorBase(api, bid);
+
+  if (contractAddress) {
+    await verifyLiveV2Contract(zkConfigProvider, publicDataProvider, contractAddress);
+  }
 
   let provingVia: ProvingVia = "wallet";
   // Loose on purpose: the assembled providers object is cast for
@@ -430,8 +470,8 @@ export async function submitLiveBid(input: {
     input.proofServerUrl === undefined ? undefined : { proofServerUrl: input.proofServerUrl };
   const { providers, compiled, walletCoinPublicKey, networkId } =
     input.walletKind === "lace"
-      ? await buildLaceProviders(input.api, input.witnesses, laceOpts)
-      : await buildOneAmProviders(input.api, input.witnesses);
+      ? await buildLaceProviders(input.api, input.witnesses, laceOpts, input.contractAddress)
+      : await buildOneAmProviders(input.api, input.witnesses, undefined, input.contractAddress);
 
   // Derive the secret key from the wallet's shielded coin public key for the private state.
   // The contract uses this secret key to derive p1_key/p2_key for the bid commitment.

@@ -138,13 +138,6 @@ function shortAddress(address: string) {
   return address.length > 16 ? `${address.slice(0, 8)}...${address.slice(-6)}` : address;
 }
 
-function isVerifierConfigurationFailure(cause: unknown): boolean {
-  const message = cause instanceof Error ? cause.message : String(cause);
-  return /mismatched verifier|verifier keys|proof configuration could not be verified/i.test(
-    message,
-  );
-}
-
 /** Preloads the lightweight deploy form; proving code remains click-only. */
 function preloadDeployChunk() {
   void import("./midnight/DeployPage").catch(() => {
@@ -714,22 +707,7 @@ function BidPage({
             bidderKey: stringToBytes32(bidderKey),
             walletKind: kind,
           });
-        let txHash: string;
-        try {
-          txHash = await submitWith(liveApi, liveKind);
-        } catch (firstCause) {
-          // 1AM can occasionally hand a new DApp session a stale verifier
-          // snapshot. This occurs before balance/approval/submission, so one
-          // brand-new session retry is safe and cannot create a duplicate bid.
-          if (!isVerifierConfigurationFailure(firstCause)) throw firstCause;
-          setStage("Refreshing the wallet proof configuration...");
-          const retried = await refreshDetectedWallet(liveInfo?.walletName);
-          oneAm.setConnected(retried.api, retried.info);
-          txHash = await submitWith(
-            retried.api,
-            retried.info.walletName === "Lace" ? "lace" : "1am",
-          );
-        }
+        const txHash = await submitWith(liveApi, liveKind);
         onSubmit({
           ...base,
           receipt: txHash,

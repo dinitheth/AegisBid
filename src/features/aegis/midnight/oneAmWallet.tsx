@@ -212,7 +212,7 @@ export function friendlyWalletError(cause: unknown): string {
     return "1AM timed out before it could show the approval request. No bid was sent. Confirm the wallet is synced, then retry once.";
   }
   if (/mismatched verifier|verifier keys|operations:.*undefined|contractstate/i.test(raw)) {
-    return "This tender's network proof configuration could not be verified. No bid was sent.";
+    return "This tender was not deployed with the current AegisBid V2 proof configuration. No bid was sent and no wallet approval was requested. Ask the issuer for a newly deployed V2 tender link.";
   }
   if (/expected instance of|scoped transaction|failed to balance/i.test(raw)) {
     return "The wallet could not prepare this private transaction. No bid was sent. Refresh once, confirm 1AM is synced, then try again.";
