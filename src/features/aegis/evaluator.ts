@@ -89,7 +89,7 @@ export function friendlySettlementError(code: TenderErrorCode): string {
     case "DEADLINE_ELAPSED":
       return "A bid was submitted after the deadline.";
     case "DEADLINE_NOT_REACHED":
-      return "The deadline has not been reached yet. Evaluation can start only after closing.";
+      return "The deadline has not passed yet. You can start evaluation after this tender closes.";
     case "NOT_EVALUATING":
       return "Start evaluation first — settlement requires the tender to be in review.";
     case "IDENTITY_ALREADY_USED":

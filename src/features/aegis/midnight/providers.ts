@@ -19,8 +19,14 @@ import {
   submitCallTx,
   verifyContractState,
 } from "@midnight-ntwrk/midnight-js-contracts";
-import { Contract, TenderMode } from "../../../../managed/aegis-bid-v2/contract/index.js";
+import {
+  Contract,
+  ledger as decodeLedger,
+  TenderMode,
+  TenderPhase,
+} from "../../../../managed/aegis-bid-v2/contract/index.js";
 import { CONTRACT_CIRCUITS, hexToBytes, stringToBytes32, type ContractCircuit } from "./contract";
+import { fetchLatestBlockTime } from "../chain";
 import type { OneAmConnectedApi } from "./oneAmWallet";
 import * as forensicsModule from "./forensics";
 
@@ -42,6 +48,7 @@ export type PrivateBidWitnesses = {
   bidderKey: Uint8Array;
   /** Deployment/evaluation capability. Keep this private and back it up. */
   evaluatorSecret?: Uint8Array;
+  settlementBids?: Array<{ amount: bigint; salt: Uint8Array; bidderKey: Uint8Array }>;
 };
 
 /**
@@ -269,6 +276,12 @@ export async function buildConnectorBase(
   const salt = bid?.salt ?? new Uint8Array(32);
   const bidderKey = bid?.bidderKey ?? new Uint8Array(32);
   const evaluatorSecret = bid?.evaluatorSecret ?? new Uint8Array(32);
+  const settlementBids = bid?.settlementBids ?? [{ amount, salt, bidderKey }];
+  const settlementWitnessAt = (index: bigint) => {
+    const witness = settlementBids[Number(index)];
+    if (!witness) throw new Error(`No settlement witness was supplied for bid ${index}.`);
+    return witness;
+  };
   // The SDK's withWitnesses conditional types cannot infer through this call
   // shape (its witnesses parameter collapses to `never` no matter how the
   // object is typed — verified against the .d.ts). The object below is still
@@ -280,9 +293,18 @@ export async function buildConnectorBase(
       localBidAmount: ({ privateState }: AnyWitnessContext) => [privateState, amount],
       localBidSalt: ({ privateState }: AnyWitnessContext) => [privateState, salt],
       evaluatorSecret: ({ privateState }: AnyWitnessContext) => [privateState, evaluatorSecret],
-      settlementBid: ({ privateState }: AnyWitnessContext) => [privateState, amount],
-      settlementSalt: ({ privateState }: AnyWitnessContext) => [privateState, salt],
-      settlementKey: ({ privateState }: AnyWitnessContext) => [privateState, bidderKey],
+      settlementBid: ({ privateState }: AnyWitnessContext, index: bigint) => [
+        privateState,
+        settlementWitnessAt(index).amount,
+      ],
+      settlementSalt: ({ privateState }: AnyWitnessContext, index: bigint) => [
+        privateState,
+        settlementWitnessAt(index).salt,
+      ],
+      settlementKey: ({ privateState }: AnyWitnessContext, index: bigint) => [
+        privateState,
+        settlementWitnessAt(index).bidderKey,
+      ],
     }),
     "./managed/aegis-bid-v2",
   );
@@ -299,6 +321,99 @@ export async function buildConnectorBase(
   };
 }
 
+export type LiveTenderLedger = {
+  phase: number;
+  commitmentCount: bigint;
+  settled: boolean;
+  reserve: bigint;
+  mode: "highest" | "lowest";
+  deadline: bigint;
+  latestBlockTime: bigint;
+  settlement?: {
+    winnerCommitment: Uint8Array;
+    winningValue: bigint;
+    comparisonRoot: Uint8Array;
+  };
+};
+
+/** Read the actual V2 ledger state through the connected wallet's configured indexer. */
+export async function readLiveTenderLedger(
+  api: OneAmConnectedApi,
+  contractAddress: string,
+): Promise<LiveTenderLedger> {
+  const config = await api.getConfiguration();
+  setNetworkId(config.networkId || "preprod");
+  const provider = indexerPublicDataProvider(config.indexerUri, config.indexerWsUri);
+  const state = await provider.queryContractState(contractAddress);
+  if (!state) throw new Error("The tender could not be found on the selected network.");
+  const decoded = decodeLedger(state.data);
+  const latestBlockTime = await fetchLatestBlockTime(config.indexerUri);
+  const settlement = decoded.settlement.is_some ? decoded.settlement.value : undefined;
+  return {
+    phase: Number(decoded.phase),
+    commitmentCount: decoded.commitmentCount,
+    settled: decoded.settlement.is_some,
+    reserve: decoded.tender.reserve,
+    mode: decoded.tender.mode === TenderMode.LowestCompliant ? "lowest" : "highest",
+    deadline: decoded.tender.deadline,
+    latestBlockTime: BigInt(Math.floor(latestBlockTime / 1000)),
+    ...(settlement ? { settlement } : {}),
+  };
+}
+
+/** Submit an evaluator circuit and wait for the SDK's finalized transaction result. */
+export async function submitLiveEvaluatorCall(input: {
+  api: OneAmConnectedApi;
+  contractAddress: string;
+  evaluatorSecret: Uint8Array;
+  settlementBids: Array<{ amount: bigint; salt: Uint8Array; bidderKey: Uint8Array }>;
+  circuitId: "beginEvaluation" | "settle";
+  args?: bigint[];
+  report?: WalletOperationReporter;
+}): Promise<string> {
+  const { providers, compiled, walletCoinPublicKey, networkId } = await buildOneAmProviders(
+    input.api,
+    {
+      amount: 0n,
+      salt: new Uint8Array(32),
+      bidderKey: new Uint8Array(32),
+      evaluatorSecret: input.evaluatorSecret,
+      settlementBids: input.settlementBids,
+    },
+    input.report,
+    input.contractAddress,
+  );
+  const { parseCoinPublicKeyToHex } = await import("@midnight-ntwrk/midnight-js-utils");
+  const coinHex = parseCoinPublicKeyToHex(walletCoinPublicKey, networkId);
+  const privateStateProvider = providers.privateStateProvider as {
+    setContractAddress(address: string): void;
+    set(privateStateId: string, state: unknown): Promise<void>;
+  };
+  privateStateProvider.setContractAddress(input.contractAddress);
+  await privateStateProvider.set(AegisBidPrivateStateId, {
+    secretKey: hexToBytes(coinHex),
+    myMove: 0n,
+    mySalt: new Uint8Array(32),
+  });
+  const result = await submitCallTx(providers, {
+    compiledContract: compiled,
+    contractAddress: input.contractAddress,
+    circuitId: input.circuitId,
+    privateStateId: AegisBidPrivateStateId,
+    args: input.args ?? [],
+    // Generated call option types do not infer the circuit union from this
+    // dynamic UI action; runtime circuit signatures are asserted above.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
+  return result.public.txId;
+}
+
+export const liveTenderPhases = {
+  open: TenderPhase.Open,
+  evaluating: TenderPhase.Evaluating,
+  settled: TenderPhase.Settled,
+} as const;
+
 /**
  * Builds the provider stack + compiled contract.
  * Pass a bid to attach its real witnesses; otherwise zero stubs are used
@@ -312,9 +427,7 @@ function makeWalletProofProvider(provingProvider: unknown, report?: WalletOperat
       for (let attempt = 1; attempt <= 3; attempt += 1) {
         try {
           const { CostModel } = await import("@midnight-ntwrk/ledger-v8");
-          report?.(
-            "Generating the zero-knowledge proof with 1AM. The approval appears after this step...",
-          );
+          report?.("Generating zero-knowledge proof…");
           return await withSafeTimeout(
             unprovenTx.prove(provingProvider, CostModel.initialCostModel()),
             PROVING_TIMEOUT_MS,
@@ -388,13 +501,13 @@ export const ctorName = (value: unknown): string => {
   return typeof name === "string" ? name : typeof value;
 };
 
-/** Submits one sealed bid to a live contract; resolves with the tx hash. */
+/** Submits one sealed bid and returns its exact on-chain commitment and tx hash. */
 export async function submitLiveBid(input: {
   api: OneAmConnectedApi;
   contractAddress: string;
   witnesses: PrivateBidWitnesses;
   bidderKey: Uint8Array;
-}): Promise<string> {
+}): Promise<{ transactionHash: string; commitment: string }> {
   const { providers, compiled, walletCoinPublicKey, networkId } = await buildOneAmProviders(
     input.api,
     input.witnesses,
@@ -441,7 +554,14 @@ export async function submitLiveBid(input: {
       // integration tests.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
-    return result.public.txId;
+    const commitment = result.private.result;
+    if (!(commitment instanceof Uint8Array)) {
+      throw new Error("The wallet returned an unexpected bid commitment.");
+    }
+    return {
+      transactionHash: result.public.txId,
+      commitment: `0x${bytesToHex(commitment)}`,
+    };
   } catch (cause) {
     // Attach assembly forensics so the Technical details box shows WHAT was
     // malformed, not just that the merge rejected it. Read-only: no wallet

@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   FLAGSHIP_TENDER,
   CURRENT_V2_PROOF_CONFIG,
   activityToTenders,
   applyLiveCounts,
+  fetchChainActivity,
+  fetchLatestBlockTime,
   getChainConfig,
   isConfigured,
   isValidPublishedTender,
@@ -27,6 +29,7 @@ describe("chain flagship", () => {
     const activity: ChainActivity = {
       state: {
         address: FLAGSHIP_TENDER.contractAddress,
+        entryPoint: null,
         blockHeight: 2634493,
         blockTimestamp: null,
         transactionHash: "abc",
@@ -83,6 +86,7 @@ describe("published tenders", () => {
     const activity: ChainActivity = {
       state: {
         address: entry.address,
+        entryPoint: null,
         blockHeight: 10,
         blockTimestamp: null,
         transactionHash: "d0",
@@ -99,12 +103,93 @@ describe("published tenders", () => {
     expect(applyLiveCounts(tender, null)).toEqual(tender);
     const settled = applyLiveCounts(tender, {
       ...activity,
-      actions: [
-        ...activity.actions,
-        { hash: "s1", kind: "Settle", blockHeight: 11, timestamp: null },
-      ],
+      state: { ...activity.state, entryPoint: "settle" },
+      actions: [{ hash: "s1", kind: "ContractCall", blockHeight: 11, timestamp: null }],
     });
     expect(settled.status).toBe("Settled");
+  });
+
+  it("reads the latest circuit from Midnight and marks a settled tender", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body)) as { query: string };
+      if (request.query.includes("ContractState")) {
+        expect(request.query).toContain("$address: HexEncoded!");
+        return new Response(
+          JSON.stringify({
+            data: {
+              contractAction: {
+                __typename: "ContractCall",
+                entryPoint: "settle",
+                address: entry.address,
+                state: "encoded-state",
+                transaction: { hash: "settlement-tx", block: { height: 12, timestamp: null } },
+              },
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ data: { block: { timestamp: Date.now() } } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const activity = await fetchChainActivity({
+        indexerUrl: "https://indexer.example/graphql",
+        contractAddress: entry.address,
+      });
+      expect(activity.state.entryPoint).toBe("settle");
+      expect(activity.actions[0]?.kind).toBe("settle");
+      expect(applyLiveCounts(publishedToTender(entry), activity).status).toBe("Settled");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("uses the network clock instead of a fast device clock", () => {
+    const tender = publishedToTender({
+      ...entry,
+      deadline: new Date(Date.now() - 60_000).toISOString(),
+    });
+    const activity: ChainActivity = {
+      state: {
+        address: entry.address,
+        entryPoint: null,
+        blockHeight: 10,
+        blockTimestamp: null,
+        transactionHash: "d0",
+        stateHex: null,
+      },
+      actions: [],
+      latestBlockTime: Date.now() - 120_000,
+    };
+
+    expect(tender.status).toBe("Evaluating");
+    expect(applyLiveCounts(tender, activity).status).toBe("Active");
+    expect(applyLiveCounts(tender, { ...activity, latestBlockTime: Date.now() }).status).toBe(
+      "Evaluating",
+    );
+  });
+
+  it("reads the latest network block timestamp from the indexer", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ data: { block: { timestamp: 1_791_544_908_001 } } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(fetchLatestBlockTime("https://indexer.example/graphql")).resolves.toBe(
+        1_791_544_908_001,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("ignores corrupt publish history", () => {
@@ -148,7 +233,9 @@ describe("shared tender links", () => {
   it("rejects malformed addresses and sanitizes fields", () => {
     expect(parseSharedTender("?contract=xyz")).toBeNull();
     expect(parseSharedTender("")).toBeNull();
-    const parsed = parseSharedTender(`?contract=${address}&v=2&proof=${CURRENT_V2_PROOF_CONFIG}&mode=bogus&reserve=abc&deadline=nope`);
+    const parsed = parseSharedTender(
+      `?contract=${address}&v=2&proof=${CURRENT_V2_PROOF_CONFIG}&mode=bogus&reserve=abc&deadline=nope`,
+    );
     expect(parsed?.mode).toBe("highest");
     expect(parsed?.reserve).toBe("0");
     expect(parsed?.issuer).toBe("Shared tender");
@@ -159,7 +246,10 @@ describe("shared tender links", () => {
     expect(publishedContractVersion(v2)).toBe(2);
     expect(publishedContractVersion(address, 2)).toBe(2);
     expect(publishedContractVersion(address)).toBe(1);
-    expect(parseSharedTender(`?contract=${address}&v=2&proof=${CURRENT_V2_PROOF_CONFIG}`)?.contractVersion).toBe(2);
+    expect(
+      parseSharedTender(`?contract=${address}&v=2&proof=${CURRENT_V2_PROOF_CONFIG}`)
+        ?.contractVersion,
+    ).toBe(2);
     expect(parseSharedTender(`?contract=${address}&v=2`)).toBeNull();
     expect(parseSharedTender(`?contract=${address}`)).toBeNull();
   });
@@ -194,7 +284,9 @@ describe("tender registry merge", () => {
 
   it("validates registry records strictly", () => {
     expect(isValidPublishedTender(local(addrA, "ok"))).toBe(true);
-    expect(isValidPublishedTender({ ...local(addrA, "old V2"), proofConfig: undefined })).toBe(false);
+    expect(isValidPublishedTender({ ...local(addrA, "old V2"), proofConfig: undefined })).toBe(
+      false,
+    );
     expect(
       isValidPublishedTender({ ...local(addrA, "stale verifier"), proofConfig: "aegis-v2-old" }),
     ).toBe(false);

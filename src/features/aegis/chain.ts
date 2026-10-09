@@ -14,8 +14,7 @@ export type ChainConfig = { indexerUrl: string; contractAddress: string };
  * deployments. Bump this whenever the Compact circuits or verifier keys
  * change so old listings cannot masquerade as compatible V2 tenders.
  */
-export const CURRENT_V2_PROOF_CONFIG =
-  "aegis-v2-8c335f5f3edca4a431053bfd8ed137afbb2430b5" as const;
+export const CURRENT_V2_PROOF_CONFIG = "aegis-v2-8c335f5f3edca4a431053bfd8ed137afbb2430b5" as const;
 
 const STORAGE_KEY = "aegis-chain-config";
 
@@ -103,6 +102,8 @@ export const contractAddress = envContract || undefined;
 
 export type ChainContractState = {
   address: string;
+  /** Circuit called by the latest on-chain action (e.g. submitBid, settle). */
+  entryPoint: string | null;
   blockHeight: number | null;
   blockTimestamp: string | null;
   transactionHash: string | null;
@@ -111,27 +112,25 @@ export type ChainContractState = {
 
 export type ChainActivity = {
   state: ChainContractState;
-  /** Every transaction that has touched the contract, newest first. */
+  /** Public winning receipt decoded from the settled V2 ledger. */
+  settlement?: { winnerCommitment: string; winningValue: string };
+  /** Latest indexed action for this contract, as exposed by Midnight GraphQL. */
   actions: {
     hash: string;
     kind: string;
     blockHeight: number | null;
     timestamp: string | null;
   }[];
+  /** Timestamp (milliseconds) of the indexer's latest network block. */
+  latestBlockTime?: number | null;
 };
 
-const STATE_QUERY = `query ContractState($address: String!) {
+const STATE_QUERY = `query ContractState($address: HexEncoded!) {
   contractAction(address: $address) {
     address
     state
     __typename
-    transaction { hash block { height timestamp } }
-  }
-}`;
-
-const HISTORY_QUERY = `query ContractHistory($address: String!) {
-  contractActions(address: $address) {
-    __typename
+    ... on ContractCall { entryPoint }
     transaction { hash block { height timestamp } }
   }
 }`;
@@ -152,10 +151,32 @@ async function callIndexer<T>(config: ChainConfig, query: string): Promise<T> {
   return payload.data;
 }
 
+/** Reads the network clock from the latest indexed block (not the device clock). */
+export async function fetchLatestBlockTime(indexerUrl: string): Promise<number> {
+  const response = await fetch(indexerUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ query: "query LatestBlockTime { block { timestamp } }" }),
+  });
+  if (!response.ok) throw new Error(`Indexer request failed [${response.status}].`);
+  const payload = (await response.json()) as {
+    errors?: { message: string }[];
+    data?: { block?: { timestamp?: number | null } | null };
+  };
+  if (payload.errors?.length)
+    throw new Error(payload.errors[0]?.message ?? "Indexer query failed.");
+  const timestamp = payload.data?.block?.timestamp;
+  if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
+    throw new Error("The indexer did not return the latest network block time.");
+  }
+  return timestamp;
+}
+
 type ActionNode = {
   __typename?: string;
   address?: string;
   state?: string;
+  entryPoint?: string;
   transaction?: { hash?: string; block?: { height?: number; timestamp?: string } };
 };
 
@@ -168,6 +189,7 @@ export async function fetchContractState(
   if (!action) throw new Error("Contract not found on this network.");
   return {
     address: action.address ?? config.contractAddress,
+    entryPoint: action.entryPoint ?? null,
     blockHeight: action.transaction?.block?.height ?? null,
     blockTimestamp: action.transaction?.block?.timestamp ?? null,
     transactionHash: action.transaction?.hash ?? null,
@@ -179,30 +201,28 @@ export async function fetchChainActivity(
   config: ChainConfig = getChainConfig(),
 ): Promise<ChainActivity> {
   const state = await fetchContractState(config);
-  let actions: ChainActivity["actions"] = [];
+  // Midnight's public GraphQL schema exposes contractAction (singular), not
+  // contractActions. Keep the latest real circuit name: it is the authoritative
+  // signal for whether the most recent call was submitBid, beginEvaluation,
+  // or settle. The previous plural-field query always failed and silently fell
+  // back to a generic ContractAction, so settled contracts stayed in review.
+  const actions: ChainActivity["actions"] = state.transactionHash
+    ? [
+        {
+          hash: state.transactionHash,
+          kind: state.entryPoint ?? "ContractAction",
+          blockHeight: state.blockHeight,
+          timestamp: state.blockTimestamp,
+        },
+      ]
+    : [];
+  let latestBlockTime: number | null = null;
   try {
-    const data = await callIndexer<{ contractActions?: ActionNode[] }>(config, HISTORY_QUERY);
-    actions = (data.contractActions ?? []).map((node) => ({
-      hash: node.transaction?.hash ?? "",
-      kind: node.__typename ?? "ContractCall",
-      blockHeight: node.transaction?.block?.height ?? null,
-      timestamp: node.transaction?.block?.timestamp ?? null,
-    }));
-    actions.sort((a, b) => (b.blockHeight ?? 0) - (a.blockHeight ?? 0));
+    latestBlockTime = await fetchLatestBlockTime(config.indexerUrl);
   } catch {
-    // Some indexers expose only the latest action; fall back to that single entry.
-    actions = state.transactionHash
-      ? [
-          {
-            hash: state.transactionHash,
-            kind: "ContractAction",
-            blockHeight: state.blockHeight,
-            timestamp: state.blockTimestamp,
-          },
-        ]
-      : [];
+    // Activity and status remain usable if this indexer omits the block query.
   }
-  return { state, actions };
+  return { state, actions, latestBlockTime };
 }
 
 /**
@@ -277,6 +297,7 @@ export function savePublishedTenders(items: PublishedTender[]): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(PUBLISHED_KEY, JSON.stringify(items));
+    window.dispatchEvent(new Event("aegisbid:published"));
   } catch {
     /* private mode etc. */
   }
@@ -325,11 +346,19 @@ export function parseSharedTender(search: string): PublishedTender | null {
 export function applyLiveCounts(tender: Tender, activity: ChainActivity | null): Tender {
   if (!activity) return tender;
   const calls = activity.actions.filter((item) => !item.kind.toLowerCase().includes("deploy"));
-  const settled = activity.actions.some((item) => item.kind.toLowerCase().includes("settle"));
+  const settled =
+    activity.state.entryPoint?.toLowerCase() === "settle" ||
+    activity.actions.some((item) => item.kind.toLowerCase() === "settle");
+  const deadlineMs = Date.parse(tender.deadline);
+  const networkTime = activity.latestBlockTime;
+  const closed =
+    Number.isFinite(deadlineMs) &&
+    (typeof networkTime === "number" ? networkTime >= deadlineMs : deadlineMs <= Date.now());
   return {
     ...tender,
     commitments: calls.length,
-    status: settled ? "Settled" : tender.status,
+    status: settled ? "Settled" : closed ? "Evaluating" : "Active",
+    ...(activity.settlement ? { settlement: activity.settlement } : {}),
   };
 }
 
@@ -359,13 +388,19 @@ export function publishedToTender(entry: PublishedTender): Tender {
 /** Turns raw indexer activity into the tender records the explorer renders. */
 export function activityToTenders(activity: ChainActivity): Tender[] {
   const calls = activity.actions.filter((item) => !item.kind.toLowerCase().includes("deploy"));
-  const settled = activity.actions.some((item) => item.kind.toLowerCase().includes("settle"));
+  const settled =
+    activity.state.entryPoint?.toLowerCase() === "settle" ||
+    activity.actions.some((item) => item.kind.toLowerCase() === "settle");
   if (activity.state.address === FLAGSHIP_TENDER.contractAddress) {
     // Verified on-chain parameters of the flagship deployment (see
     // FLAGSHIP_TENDER); only counts and status are read live. A past
     // deadline means bidding is over even though the on-chain phase is
     // still Open — showing "Open for bids" would invite rejected bids.
-    const deadlinePassed = new Date(FLAGSHIP_TENDER.deadline).getTime() <= Date.now();
+    const deadline = new Date(FLAGSHIP_TENDER.deadline).getTime();
+    const deadlinePassed =
+      typeof activity.latestBlockTime === "number"
+        ? activity.latestBlockTime >= deadline
+        : deadline <= Date.now();
     return [
       {
         id: `${activity.state.address.slice(0, 10)}...${activity.state.address.slice(-6)}`,
@@ -379,6 +414,7 @@ export function activityToTenders(activity: ChainActivity): Tender[] {
         specification: `${FLAGSHIP_TENDER.specification} Live bid count below.`,
         contractAddress: activity.state.address,
         contractVersion: FLAGSHIP_TENDER.contractVersion,
+        ...(activity.settlement ? { settlement: activity.settlement } : {}),
       },
     ];
   }

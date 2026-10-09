@@ -30,16 +30,43 @@ export type ChainTenders = {
   reset: () => void;
 };
 
+async function includeSettlementReceipt(
+  activity: ChainActivity,
+  indexerUrl: string,
+): Promise<ChainActivity> {
+  const isSettled =
+    activity.state.entryPoint?.toLowerCase() === "settle" ||
+    activity.actions.some((action) => action.kind.toLowerCase() === "settle");
+  if (!isSettled) return activity;
+  try {
+    const { readPublicTenderSettlement } = await import("./midnight/publicTender");
+    const settlement = await readPublicTenderSettlement(indexerUrl, activity.state.address);
+    return settlement ? { ...activity, settlement } : activity;
+  } catch {
+    // Keep the public tender/result visible if the ledger decoder or indexer
+    // is temporarily unavailable; just omit the private winner notification.
+    return activity;
+  }
+}
+
 export function useChainTenders(): ChainTenders {
   const [config, setConfig] = useState<ChainConfig>({ indexerUrl: "", contractAddress: "" });
   const [activity, setActivity] = useState<ChainActivity | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Tenders published from this device live under other contract addresses
-  // the directory never queries — merge them in so they are biddable. Read
-  // fresh every render (tiny sync parse): publishing happens on another page
-  // without remounting this hook, so a mount-time snapshot would go stale.
-  const published = loadPublishedTenders();
+  // Keep server and first client render identical. Local storage is loaded
+  // after hydration, then same-tab publish events keep this list current.
+  const [published, setPublished] = useState<PublishedTender[]>([]);
+  useEffect(() => {
+    const refreshPublished = () => setPublished(loadPublishedTenders());
+    refreshPublished();
+    window.addEventListener("storage", refreshPublished);
+    window.addEventListener("aegisbid:published", refreshPublished);
+    return () => {
+      window.removeEventListener("storage", refreshPublished);
+      window.removeEventListener("aegisbid:published", refreshPublished);
+    };
+  }, []);
 
   // Shared registry: what everyone else published (same shape, newest
   // first). Unavailable without backend config — the directory then shows
@@ -73,7 +100,8 @@ export function useChainTenders(): ChainTenders {
     setLoading(true);
     setError(null);
     try {
-      setActivity(await fetchChainActivity(next));
+      const fetched = await fetchChainActivity(next);
+      setActivity(await includeSettlementReceipt(fetched, next.indexerUrl));
     } catch (cause) {
       setActivity(null);
       setError(cause instanceof Error ? cause.message : "The indexer could not be reached.");
@@ -99,35 +127,49 @@ export function useChainTenders(): ChainTenders {
     .filter((address) => address !== contractAddress)
     .sort()
     .join(",");
-  useEffect(() => {
+  const loadExtra = useCallback(async () => {
     const addresses = [...new Set(extraKey === "" ? [] : extraKey.split(","))];
     if (addresses.length === 0 || !indexerUrl || !contractAddress) {
       setExtraActivity({});
       return;
     }
-    let cancelled = false;
-    void (async () => {
-      const results = await Promise.all(
-        addresses.map(async (address) => {
-          try {
-            const item = await fetchChainActivity({ indexerUrl, contractAddress: address });
-            return [address, item] as const;
-          } catch {
-            return null;
-          }
-        }),
-      );
-      if (cancelled) return;
-      const next: Record<string, ChainActivity> = {};
-      for (const result of results) {
-        if (result) next[result[0]] = result[1];
-      }
-      setExtraActivity(next);
-    })();
-    return () => {
-      cancelled = true;
-    };
+    const results = await Promise.all(
+      addresses.map(async (address) => {
+        try {
+          const item = await fetchChainActivity({ indexerUrl, contractAddress: address });
+          const enriched = await includeSettlementReceipt(item, indexerUrl);
+          return [address, enriched] as const;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const next: Record<string, ChainActivity> = {};
+    for (const result of results) {
+      if (result) next[result[0]] = result[1];
+    }
+    setExtraActivity(next);
   }, [extraKey, indexerUrl, contractAddress]);
+
+  useEffect(() => {
+    void loadExtra();
+  }, [loadExtra]);
+
+  // Settlement is performed by an evaluator on another device. Refresh the
+  // public receipt periodically so a bidder viewing Results can see a win
+  // without needing a manual reload.
+  useEffect(() => {
+    if (!isConfigured(config)) return;
+    const timer = window.setInterval(() => {
+      void load(config);
+      void loadExtra();
+    }, 20_000);
+    return () => window.clearInterval(timer);
+  }, [config, load, loadExtra]);
+
+  const refresh = useCallback(async () => {
+    await Promise.all([load(config), loadExtra()]);
+  }, [load, loadExtra, config]);
 
   // No demo fallback: when the indexer is unreachable the directory shows
   // only tenders published from this device (possibly none) instead of
@@ -153,7 +195,7 @@ export function useChainTenders(): ChainTenders {
     error,
     activity,
     tenders,
-    refresh: () => load(config),
+    refresh,
     save: async (next) => {
       const trimmed = {
         indexerUrl: next.indexerUrl.trim(),

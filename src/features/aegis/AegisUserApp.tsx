@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import {
   formatCountdown,
   generateNonce,
+  matchesSavedBidToWinner,
   normalizeStoredBids,
   type StoredBid,
   type Tender,
@@ -40,6 +41,7 @@ import {
 } from "./evaluator";
 import { formatConnectorDust } from "./wallet";
 import {
+  fetchLatestBlockTime,
   getChainConfig,
   isConfigured,
   loadPublishedTenders,
@@ -57,7 +59,7 @@ import {
   useOneAmWallet,
 } from "./midnight/oneAmWallet";
 import { stringToBytes32 } from "./midnight/contract";
-import { ensureBrowserBuffer } from "./midnight/polyfills";
+import { decryptSettlementWitness, encryptSettlementWitness } from "./witnessPackage";
 import logo from "@/assets/aegisbid-logo.png";
 
 // WASM-backed Midnight modules must never evaluate during SSR (their loader
@@ -88,7 +90,8 @@ class DeployErrorBoundary extends Component<
             This page couldn’t be loaded
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            This may be a temporary connection issue or a recent update. Refresh the page and try again.
+            This may be a temporary connection issue or a recent update. Refresh the page and try
+            again.
           </p>
           <div className="mt-6 flex justify-center gap-3">
             <Button onClick={() => window.location.reload()}>Refresh page</Button>
@@ -150,7 +153,13 @@ function preloadDeployChunk() {
 
 /** Start downloading the transaction runtime when a bidder opens an active tender. */
 function preloadBidTransactionStack() {
-  void import("./midnight/providers").catch(() => {
+  void (async () => {
+    // Do this client-side, before importing packages that reference Buffer.
+    // A static polyfill import leaks the CommonJS browser shim into SSR.
+    const { ensureBrowserBuffer } = await import("./midnight/polyfills");
+    ensureBrowserBuffer();
+    await import("./midnight/providers");
+  })().catch(() => {
     /* Submit still retries this import and surfaces a useful error. */
   });
 }
@@ -258,7 +267,7 @@ function StatusPill({ status }: { status: Tender["status"] }) {
         : "Completed";
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${status === "Active" ? "bg-success/12 text-success" : status === "Evaluating" ? "bg-warning/14 text-warning" : "bg-muted text-muted-foreground"}`}
+      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ${status === "Active" || status === "Settled" ? "bg-success/12 text-success" : "bg-warning/14 text-warning"}`}
     >
       {label}
     </span>
@@ -662,12 +671,13 @@ function BidPage({
       }
       try {
         setStage("Preparing secure transaction...");
+        const { ensureBrowserBuffer } = await import("./midnight/polyfills");
         ensureBrowserBuffer();
         // Dynamic import: the provider stack pulls WASM-backed modules that
         // must never evaluate during SSR.
         const { submitLiveBid } = await import("./midnight/providers");
         setStage(`Submitting sealed bid on preprod (approve in ${liveLabel})`);
-        const txHash = await submitLiveBid({
+        const submission = await submitLiveBid({
           api: liveApi,
           contractAddress: liveContract,
           witnesses: {
@@ -677,9 +687,12 @@ function BidPage({
           },
           bidderKey: stringToBytes32(bidderKey),
         });
+        const txHash = submission.transactionHash;
         onSubmit({
           ...base,
           receipt: txHash,
+          commitment: submission.commitment,
+          chainCommitment: submission.commitment,
           onChain: true,
           accepted: true,
           note: `Submitted on preprod · tx ${txHash.slice(0, 12)}…`,
@@ -886,6 +899,25 @@ function BidHistory({
   onBrowse: () => void;
   onClear: () => void;
 }) {
+  const [witnessPassphrases, setWitnessPassphrases] = useState<Record<string, string>>({});
+  const [witnessExportError, setWitnessExportError] = useState<Record<string, string>>({});
+  const exportWitness = async (bid: SubmittedBid, key: string) => {
+    setWitnessExportError((items) => ({ ...items, [key]: "" }));
+    try {
+      const content = await encryptSettlementWitness(bid, witnessPassphrases[key] ?? "");
+      const url = URL.createObjectURL(new Blob([content], { type: "application/octet-stream" }));
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `aegisbid-witness-${bid.tenderId.slice(0, 8)}-${bid.submittedAt}.aegis-witness`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (cause) {
+      setWitnessExportError((items) => ({
+        ...items,
+        [key]: cause instanceof Error ? cause.message : "Could not create the encrypted file.",
+      }));
+    }
+  };
   return (
     <div className="mx-auto max-w-5xl px-5 py-12 sm:py-16">
       <p className="text-sm font-semibold text-primary">Your activity</p>
@@ -941,7 +973,9 @@ function BidHistory({
                   <div className="min-w-0">
                     <dt className="text-xs text-card-foreground/60">Sealed reference</dt>
                     <dd className="mt-1 break-all font-mono text-xs text-card-foreground">
-                      {bid.commitment}
+                      {bid.onChain
+                        ? (bid.chainCommitment ?? "Unavailable for this offer")
+                        : bid.commitment}
                     </dd>
                   </div>
                   <div>
@@ -962,6 +996,44 @@ function BidHistory({
                 <p className="mt-4 text-xs text-card-foreground/60">
                   Your offer amount stays private and is never shown here to anyone else.
                 </p>
+                {bid.onChain && bid.accepted && (
+                  <details className="mt-4 rounded-md border border-border bg-muted/30 p-3">
+                    <summary className="cursor-pointer text-sm font-medium text-card-foreground">
+                      Prepare settlement witness file
+                    </summary>
+                    <p className="mt-2 text-xs leading-5 text-card-foreground/70">
+                      After bidding closes, the issuer needs every bid&apos;s original witness to
+                      prove the result. Protect this file with a strong passphrase and send the
+                      passphrase separately. The evaluator can learn the bid amount.
+                    </p>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                      <Input
+                        type="password"
+                        autoComplete="new-password"
+                        aria-label="Passphrase for encrypted settlement witness"
+                        placeholder="Passphrase (12+ characters)"
+                        value={witnessPassphrases[String(bid.submittedAt)] ?? ""}
+                        onChange={(event) =>
+                          setWitnessPassphrases((items) => ({
+                            ...items,
+                            [String(bid.submittedAt)]: event.target.value,
+                          }))
+                        }
+                      />
+                      <Button
+                        variant="outline"
+                        onClick={() => void exportWitness(bid, String(bid.submittedAt))}
+                      >
+                        Download encrypted file
+                      </Button>
+                    </div>
+                    {witnessExportError[String(bid.submittedAt)] && (
+                      <p className="mt-2 text-xs text-destructive">
+                        {witnessExportError[String(bid.submittedAt)]}
+                      </p>
+                    )}
+                  </details>
+                )}
               </article>
             ))}
           </div>
@@ -1262,7 +1334,15 @@ function loadSettlements(): SettlementRecord[] {
   }
 }
 
-function SettlementPage({ bids, tenders }: { bids: SubmittedBid[]; tenders: Tender[] }) {
+function SettlementPage({
+  bids,
+  tenders,
+  onSettled,
+}: {
+  bids: SubmittedBid[];
+  tenders: Tender[];
+  onSettled: () => Promise<void>;
+}) {
   if (tenders.length === 0) {
     return (
       <div className="mx-auto max-w-5xl px-5 py-12 sm:py-16">
@@ -1276,22 +1356,34 @@ function SettlementPage({ bids, tenders }: { bids: SubmittedBid[]; tenders: Tend
       </div>
     );
   }
-  return <SettlementWorkbench bids={bids} tenders={tenders} />;
+  return <SettlementWorkbench bids={bids} tenders={tenders} onSettled={onSettled} />;
 }
 
-function SettlementWorkbench({ bids, tenders }: { bids: SubmittedBid[]; tenders: Tender[] }) {
+function SettlementWorkbench({
+  bids,
+  tenders,
+  onSettled,
+}: {
+  bids: SubmittedBid[];
+  tenders: Tender[];
+  onSettled: () => Promise<void>;
+}) {
+  const oneAm = useOneAmWallet();
   const fallbackTender = tenders[0] as Tender;
   const [tenderId, setTenderId] = useState(fallbackTender.id);
   const [reserveInput, setReserveInput] = useState("");
   const [manual, setManual] = useState<BidWitness[]>([]);
-  const [manualAmount, setManualAmount] = useState("");
-  const [manualKey, setManualKey] = useState("");
+  const [witnessPassphrase, setWitnessPassphrase] = useState("");
   const [winningIndex, setWinningIndex] = useState(0);
   const [enginePhase, setEnginePhase] = useState<"Open" | "Evaluating" | "Settled">("Open");
   const [engineState, setEngineState] = useState<TenderState | null>(null);
   const [engineCommitments, setEngineCommitments] = useState<string[]>([]);
   const [receipt, setReceipt] = useState<SettlementReceipt | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [operationBusy, setOperationBusy] = useState(false);
+  const [operationStatus, setOperationStatus] = useState<string | null>(null);
+  const [transactionHash, setTransactionHash] = useState<string | null>(null);
+  const [networkTime, setNetworkTime] = useState<number | null>(null);
   const [history, setHistory] = useState<SettlementRecord[]>(() => loadSettlements());
 
   useEffect(() => {
@@ -1310,8 +1402,9 @@ function SettlementWorkbench({ bids, tenders }: { bids: SubmittedBid[]; tenders:
         ? BigInt(reserveInput.trim())
         : null;
   const reserveInvalid = reserveInput.trim() !== "" && !/^\d+$/.test(reserveInput.trim());
+  const liveTender = tender.contractVersion === 2 && Boolean(tender.contractAddress);
   const config = useMemo(
-    () => uiTenderToConfig(tender, { reserve: reserveOverride }),
+    () => uiTenderToConfig(tender, { reserve: liveTender ? null : reserveOverride }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       tender.id,
@@ -1321,17 +1414,42 @@ function SettlementWorkbench({ bids, tenders }: { bids: SubmittedBid[]; tenders:
       tender.mode,
       tender.specification,
       reserveInput,
+      liveTender,
     ],
   );
   const defaultReserve = parseReserveToBigInt(tender.threshold);
 
+  useEffect(() => {
+    setNetworkTime(null);
+    if (!liveTender) {
+      return;
+    }
+    let cancelled = false;
+    const refreshNetworkTime = async () => {
+      try {
+        const walletConfig = oneAm.api ? await oneAm.api.getConfiguration() : null;
+        const indexerUrl = walletConfig?.indexerUri || getChainConfig().indexerUrl;
+        const timestamp = await fetchLatestBlockTime(indexerUrl);
+        if (!cancelled) setNetworkTime(timestamp);
+      } catch {
+        if (!cancelled) setNetworkTime(null);
+      }
+    };
+    void refreshNetworkTime();
+    const timer = window.setInterval(() => void refreshNetworkTime(), 20_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [liveTender, oneAm.api, tender.contractAddress]);
+
   const autoWitnesses = useMemo(
     () =>
       bids
-        .filter((bid) => bid.tenderId === tender.id)
+        .filter((bid) => bid.tenderId === tender.id && (!liveTender || bid.onChain))
         .map((bid) => storedBidToWitness(bid))
         .filter((w): w is BidWitness => w !== null),
-    [bids, tender.id],
+    [bids, tender.id, liveTender],
   );
   const witnesses = useMemo(() => [...autoWitnesses, ...manual], [autoWitnesses, manual]);
   const commitments = useMemo(
@@ -1361,7 +1479,29 @@ function SettlementWorkbench({ bids, tenders }: { bids: SubmittedBid[]; tenders:
   }, [witnesses, eligibility, config.mode]);
   const safeWinningIndex =
     witnesses.length === 0 ? 0 : Math.min(winningIndex, witnesses.length - 1);
-  const deadlineReached = Date.now() >= config.deadline;
+  const deadlineReached = liveTender
+    ? networkTime !== null && networkTime >= config.deadline
+    : Date.now() >= config.deadline;
+
+  const verifyLivePolicy = (ledger: {
+    reserve: bigint;
+    mode: "highest" | "lowest";
+    deadline: bigint;
+    latestBlockTime: bigint;
+  }) => {
+    setNetworkTime(Number(ledger.latestBlockTime) * 1000);
+    const expectedDeadline = BigInt(Math.floor(config.deadline / 1000));
+    if (
+      defaultReserve === null ||
+      ledger.reserve !== defaultReserve ||
+      ledger.mode !== config.mode ||
+      ledger.deadline !== expectedDeadline
+    ) {
+      throw new Error(
+        "This share link’s policy does not match the deployed tender. Ask the issuer for the current V2 share link; no settlement was submitted.",
+      );
+    }
+  };
 
   const resetEngine = () => {
     setEnginePhase("Open");
@@ -1369,33 +1509,146 @@ function SettlementWorkbench({ bids, tenders }: { bids: SubmittedBid[]; tenders:
     setEngineCommitments([]);
     setReceipt(null);
     setFailure(null);
+    setTransactionHash(null);
+    setOperationStatus(null);
   };
 
   const selectTender = (id: string) => {
     setTenderId(id);
+    setNetworkTime(null);
     setManual([]);
-    setManualAmount("");
-    setManualKey("");
+    setWitnessPassphrase("");
     setWinningIndex(0);
     setReserveInput("");
     resetEngine();
   };
 
-  const addManual = () => {
-    if (!/^\d+$/.test(manualAmount)) return;
-    const witness: BidWitness = {
-      amount: BigInt(manualAmount),
-      salt: generateNonce(),
-      bidderKey: manualKey.trim() || `evaluator-key:${Date.now()}`,
-    };
-    setManual((items) => [...items, witness]);
-    setManualAmount("");
-    setManualKey("");
-    resetEngine();
+  const importWitnessFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setFailure(null);
+    try {
+      const imported: BidWitness[] = [];
+      for (const file of Array.from(files)) {
+        const item = await decryptSettlementWitness(await file.text(), witnessPassphrase);
+        if (item.tenderId !== tender.id) {
+          throw new Error(`“${file.name}” belongs to a different tender.`);
+        }
+        imported.push({ amount: BigInt(item.amount), salt: item.salt, bidderKey: item.bidderKey });
+      }
+      setManual((items) => {
+        const known = new Set(
+          [...autoWitnesses, ...items].map((witness) =>
+            makeCommitment(witness.amount, witness.salt, witness.bidderKey),
+          ),
+        );
+        const additions = imported.filter((witness) => {
+          const id = makeCommitment(witness.amount, witness.salt, witness.bidderKey);
+          if (known.has(id)) return false;
+          known.add(id);
+          return true;
+        });
+        return [...items, ...additions];
+      });
+      resetEngine();
+      setOperationStatus(`${imported.length} encrypted witness file(s) opened for this tender.`);
+    } catch (cause) {
+      setFailure(cause instanceof Error ? cause.message : "Could not import the witness file.");
+    }
   };
 
-  const startEvaluation = () => {
+  const connectLiveWallet = async () => {
+    const refreshed = await refreshDetectedWallet(oneAm.info?.walletName);
+    oneAm.setConnected(refreshed.api, refreshed.info);
+    return refreshed.api;
+  };
+
+  const settlementWitnesses = () =>
+    witnesses.map((witness) => ({
+      amount: witness.amount,
+      salt: stringToBytes32(witness.salt),
+      bidderKey: stringToBytes32(witness.bidderKey),
+    }));
+
+  const startEvaluation = async () => {
     setFailure(null);
+    setOperationStatus(null);
+    if (liveTender) {
+      setOperationBusy(true);
+      try {
+        const address = tender.contractAddress as string;
+        const secretHex = window.localStorage.getItem(`aegisbid-v2-evaluator-secret:${address}`);
+        if (!secretHex) {
+          throw new Error(
+            "This browser does not have the issuer’s evaluator key for this tender. Use the browser profile that published it.",
+          );
+        }
+        const { ensureBrowserBuffer } = await import("./midnight/polyfills");
+        ensureBrowserBuffer();
+        const api = await connectLiveWallet();
+        const { hexToBytes } = await import("./midnight/contract");
+        const { liveTenderPhases, readLiveTenderLedger, submitLiveEvaluatorCall } =
+          await import("./midnight/providers");
+        const ledger = await readLiveTenderLedger(api, address);
+        verifyLivePolicy(ledger);
+        if (ledger.latestBlockTime < ledger.deadline) {
+          throw new Error(
+            "Midnight’s latest block is still before this tender’s deadline. The computer clock may be ahead; evaluation will unlock when the network reaches the deadline. No proof or transaction was submitted.",
+          );
+        }
+        if (ledger.settled || ledger.phase === liveTenderPhases.settled) {
+          setEnginePhase("Settled");
+          setOperationStatus("This tender is already settled on the network.");
+          return;
+        }
+        if (ledger.commitmentCount > 8n) {
+          throw new Error("This tender exceeds the on-chain limit of 8 bids for one settlement.");
+        }
+        if (BigInt(witnesses.length) !== ledger.commitmentCount) {
+          throw new Error(
+            `The network has ${ledger.commitmentCount} committed bids, but ${witnesses.length} matching witness file(s) are loaded. Collect every bidder’s encrypted witness before continuing.`,
+          );
+        }
+        if (ledger.phase === liveTenderPhases.evaluating) {
+          setEnginePhase("Evaluating");
+          setOperationStatus(
+            "Evaluation has already started on-chain. You can settle the winner now.",
+          );
+          return;
+        }
+        if (ledger.phase !== liveTenderPhases.open) {
+          throw new Error("This tender is not open for evaluation on the network.");
+        }
+        const txHash = await submitLiveEvaluatorCall({
+          api,
+          contractAddress: address,
+          evaluatorSecret: hexToBytes(secretHex),
+          settlementBids: settlementWitnesses(),
+          circuitId: "beginEvaluation",
+          report: setOperationStatus,
+        });
+        setTransactionHash(txHash);
+        setEnginePhase("Evaluating");
+        setOperationStatus("Evaluation confirmed on-chain. Choose the optimal offer to settle.");
+      } catch (cause) {
+        console.error("Live tender evaluation failed", cause);
+        setOperationStatus(null);
+        const message = cause instanceof Error ? cause.message : "";
+        if (/DEADLINE_NOT_REACHED/i.test(message)) {
+          setFailure(
+            "Midnight’s latest block is still before the deadline, even if this device shows it closed. Wait for a later network block and retry; no transaction was sent.",
+          );
+        } else {
+          setFailure(
+            cause instanceof Error && !/\b(at |\.js:\d+|contractstate|verifier key)/i.test(message)
+              ? message
+              : "We couldn’t start evaluation. Check the wallet connection and tender data, then try again.",
+          );
+        }
+      } finally {
+        setOperationBusy(false);
+      }
+      return;
+    }
     try {
       if (witnesses.length === 0)
         throw new Error("Add at least one bid witness before evaluation.");
@@ -1406,14 +1659,115 @@ function SettlementWorkbench({ bids, tenders }: { bids: SubmittedBid[]; tenders:
       setEngineCommitments([...state.commitments]);
       setEnginePhase("Evaluating");
     } catch (cause) {
-      if (cause instanceof TenderError)
-        setFailure(`${friendlySettlementError(cause.code)} [${cause.code}]`);
-      else setFailure(cause instanceof Error ? cause.message : "Evaluation could not start.");
+      if (cause instanceof TenderError) setFailure(friendlySettlementError(cause.code));
+      else {
+        console.error("Settlement evaluation could not start", cause);
+        setFailure(
+          "We couldn’t start the evaluation. Please review the tender details and try again.",
+        );
+      }
     }
   };
 
-  const settleNow = () => {
+  const settleNow = async () => {
     setFailure(null);
+    setOperationStatus(null);
+    if (liveTender) {
+      setOperationBusy(true);
+      try {
+        if (suggestedIndex === null) {
+          throw new Error("No offer meets this tender’s reserve or ceiling.");
+        }
+        if (winningIndex !== suggestedIndex) {
+          throw new Error("Select the optimal eligible offer before settling this tender.");
+        }
+        const address = tender.contractAddress as string;
+        const secretHex = window.localStorage.getItem(`aegisbid-v2-evaluator-secret:${address}`);
+        if (!secretHex) {
+          throw new Error("Use the browser profile that published this tender to settle it.");
+        }
+        const { ensureBrowserBuffer } = await import("./midnight/polyfills");
+        ensureBrowserBuffer();
+        const api = await connectLiveWallet();
+        const { hexToBytes } = await import("./midnight/contract");
+        const { liveTenderPhases, readLiveTenderLedger, submitLiveEvaluatorCall } =
+          await import("./midnight/providers");
+        const ledger = await readLiveTenderLedger(api, address);
+        verifyLivePolicy(ledger);
+        if (ledger.settled || ledger.phase === liveTenderPhases.settled) {
+          throw new Error("This tender is already settled on the network.");
+        }
+        if (ledger.phase !== liveTenderPhases.evaluating) {
+          throw new Error("Start on-chain evaluation after the tender closes before settlement.");
+        }
+        if (ledger.commitmentCount > 8n || BigInt(witnesses.length) !== ledger.commitmentCount) {
+          throw new Error(
+            `All ${ledger.commitmentCount} committed bid witness(es) must be loaded before settlement.`,
+          );
+        }
+        if (witnesses.length === 0) throw new Error("Import every bidder’s witness file first.");
+        const txHash = await submitLiveEvaluatorCall({
+          api,
+          contractAddress: address,
+          evaluatorSecret: hexToBytes(secretHex),
+          settlementBids: settlementWitnesses(),
+          circuitId: "settle",
+          args: [BigInt(safeWinningIndex), BigInt(witnesses.length)],
+          report: setOperationStatus,
+        });
+        setTransactionHash(txHash);
+        setOperationStatus("Settlement transaction confirmed. Verifying the public result…");
+        let finalLedger = await readLiveTenderLedger(api, address);
+        for (let attempt = 0; !finalLedger.settled && attempt < 8; attempt += 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1500));
+          finalLedger = await readLiveTenderLedger(api, address);
+        }
+        if (!finalLedger.settled || !finalLedger.settlement) {
+          throw new Error(
+            "The transaction was confirmed, but the indexer has not shown the settlement yet. Keep the transaction reference and refresh Results shortly.",
+          );
+        }
+        const { bytesToHex } = await import("./midnight/providers");
+        const confirmedReceipt: SettlementReceipt = {
+          winnerCommitment: `0x${bytesToHex(finalLedger.settlement.winnerCommitment)}`,
+          winningValue: finalLedger.settlement.winningValue,
+          comparisonRoot: `0x${bytesToHex(finalLedger.settlement.comparisonRoot)}`,
+          settledAt: Date.now(),
+        };
+        setReceipt(confirmedReceipt);
+        setEnginePhase("Settled");
+        setEngineCommitments([...commitments]);
+        setHistory((items) =>
+          [
+            {
+              tenderId: tender.id,
+              tenderTitle: tender.title,
+              winnerCommitment: confirmedReceipt.winnerCommitment,
+              winningValue: confirmedReceipt.winningValue.toString(),
+              comparisonRoot: confirmedReceipt.comparisonRoot,
+              settledAt: confirmedReceipt.settledAt,
+              bidCount: witnesses.length,
+              mode: tender.mode,
+            },
+            ...items,
+          ].slice(0, 20),
+        );
+        await onSettled();
+        setOperationStatus("Winner confirmed on-chain. Tender Results has been refreshed.");
+      } catch (cause) {
+        console.error("Live tender settlement failed", cause);
+        setOperationStatus(null);
+        const message = cause instanceof Error ? cause.message : "";
+        setFailure(
+          cause instanceof Error && !/\b(at |\.js:\d+|contractstate|verifier key)/i.test(message)
+            ? message
+            : "We couldn’t settle this tender. Check that every encrypted bid witness is correct, then retry only after checking 1AM activity.",
+        );
+      } finally {
+        setOperationBusy(false);
+      }
+      return;
+    }
     try {
       const state = engineState;
       if (!state || enginePhase !== "Evaluating")
@@ -1444,9 +1798,13 @@ function SettlementWorkbench({ bids, tenders }: { bids: SubmittedBid[]; tenders:
         ].slice(0, 20),
       );
     } catch (cause) {
-      if (cause instanceof TenderError)
-        setFailure(`${friendlySettlementError(cause.code)} [${cause.code}]`);
-      else setFailure(cause instanceof Error ? cause.message : "Settlement failed.");
+      if (cause instanceof TenderError) setFailure(friendlySettlementError(cause.code));
+      else {
+        console.error("Tender settlement could not be completed", cause);
+        setFailure(
+          "We couldn’t complete settlement. Please review the selected winner and bid details, then try again.",
+        );
+      }
     }
   };
 
@@ -1490,25 +1848,46 @@ function SettlementWorkbench({ bids, tenders }: { bids: SubmittedBid[]; tenders:
             id="settle-reserve"
             inputMode="numeric"
             value={reserveInput}
+            disabled={liveTender}
             onChange={(event) => {
               setReserveInput(event.target.value.replace(/\D/g, ""));
               resetEngine();
             }}
             placeholder={defaultReserve !== null ? defaultReserve.toString() : "e.g. 4200000"}
           />
+          {liveTender && (
+            <p className="text-xs text-card-foreground/60">
+              The deployed contract’s reserve is fixed and verified before settlement.
+            </p>
+          )}
           {reserveInvalid && <p className="text-xs text-destructive">Enter whole numbers only.</p>}
         </div>
         <div className="space-y-1.5">
           <Label>Closing status</Label>
           <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
             <p className="font-semibold text-card-foreground">
-              {deadlineReached
-                ? "Closed — ready for evaluation"
-                : `Open — ${formatCountdown(tender.deadline)} left`}
+              {liveTender
+                ? networkTime === null
+                  ? "Checking Midnight’s block time…"
+                  : deadlineReached
+                    ? "Closed on Midnight — ready for evaluation"
+                    : "Still open on Midnight"
+                : deadlineReached
+                  ? "Closed — ready for evaluation"
+                  : `Open — ${formatCountdown(tender.deadline)} left`}
             </p>
             <p className="mt-1 text-xs text-card-foreground/60">
               Deadline {formatMoment(config.deadline)}
+              {liveTender && networkTime !== null && (
+                <> · Latest block {formatMoment(networkTime)}</>
+              )}
             </p>
+            {liveTender && networkTime !== null && !deadlineReached && (
+              <p className="mt-2 text-xs text-warning">
+                The computer clock may be ahead; the contract allows evaluation only after a later
+                Midnight block reaches the deadline.
+              </p>
+            )}
           </div>
         </div>
       </section>
@@ -1527,12 +1906,10 @@ function SettlementWorkbench({ bids, tenders }: { bids: SubmittedBid[]; tenders:
           </div>
         </div>
         <p className="mt-2 text-sm text-card-foreground/70">
-          {tender.commitments > 0
-            ? `${witnesses.length} of ${tender.commitments} committed offers supplied. `
-            : `${autoWitnesses.length} from this device · ${manual.length} added manually. `}
-          Only bids made on this device load on their own — sealed amounts never touch the chain, so
-          each other bidder must share their amount and key with you after closing. The circuit
-          rejects incomplete or uncommitted sets.
+          {autoWitnesses.length} bid witness(es) loaded from this device · {manual.length} imported
+          securely. Before a live settlement, the network commitment count is checked and every
+          original bid witness must match. The evaluator can see the bid amounts; they are not
+          published in the settlement receipt.
         </p>
         {witnesses.length === 0 ? (
           <div className="mt-4 rounded-md border border-dashed border-border p-6 text-center text-sm text-card-foreground/70">
@@ -1592,36 +1969,45 @@ function SettlementWorkbench({ bids, tenders }: { bids: SubmittedBid[]; tenders:
         )}
         <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
           <div className="space-y-1.5">
-            <Label htmlFor="manual-amount">Offer amount</Label>
+            <Label htmlFor="witness-passphrase">Witness file passphrase</Label>
             <Input
-              id="manual-amount"
-              inputMode="numeric"
-              value={manualAmount}
-              onChange={(event) => setManualAmount(event.target.value.replace(/\D/g, ""))}
-              placeholder="e.g. 4250000"
+              id="witness-passphrase"
+              type="password"
+              autoComplete="current-password"
+              value={witnessPassphrase}
+              onChange={(event) => setWitnessPassphrase(event.target.value)}
+              placeholder="Passphrase from bidder"
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="manual-key">Bidder key (optional)</Label>
+            <Label htmlFor="witness-files">Encrypted bid witness file(s)</Label>
             <Input
-              id="manual-key"
-              value={manualKey}
-              onChange={(event) => setManualKey(event.target.value)}
-              placeholder="evaluator-known key"
-              className="font-mono text-xs"
+              id="witness-files"
+              type="file"
+              multiple
+              accept=".aegis-witness"
+              onChange={(event) => {
+                void importWitnessFiles(event.target.files);
+                event.currentTarget.value = "";
+              }}
             />
           </div>
-          <div className="flex items-end">
-            <Button
-              variant="outline"
-              className="w-full sm:w-auto"
-              onClick={addManual}
-              disabled={!manualAmount}
-            >
-              Add witness
-            </Button>
+          <div className="flex items-end text-xs text-card-foreground/60">
+            Import each bidder&apos;s original encrypted witness after bidding closes.
           </div>
         </div>
+        {!liveTender && (
+          <p className="mt-3 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
+            This is a local demo tender. Its evaluation receipt is not written to the Midnight
+            network.
+          </p>
+        )}
+        {liveTender && (
+          <p className="mt-3 text-xs text-card-foreground/60">
+            V2 settlement supports up to 8 bids per tender. Bidder files are encrypted in your
+            browser with AES-GCM; share the passphrase through a separate trusted channel.
+          </p>
+        )}
       </section>
 
       <section className="mt-6 rounded-lg border border-border bg-section p-6">
@@ -1641,25 +2027,51 @@ function SettlementWorkbench({ bids, tenders }: { bids: SubmittedBid[]; tenders:
         </ol>
         <div className="mt-4 flex flex-wrap gap-2">
           <Button
-            onClick={startEvaluation}
-            disabled={witnesses.length === 0 || enginePhase !== "Open"}
+            onClick={() => void startEvaluation()}
+            disabled={
+              operationBusy ||
+              (liveTender && networkTime !== null && !deadlineReached) ||
+              (!liveTender && (witnesses.length === 0 || enginePhase !== "Open"))
+            }
           >
-            Start evaluation
+            {operationBusy
+              ? "Please wait…"
+              : liveTender
+                ? "Start on-chain evaluation"
+                : "Run demo evaluation"}
           </Button>
-          <Button onClick={settleNow} disabled={enginePhase !== "Evaluating"} variant="secondary">
-            Settle with selected winner
+          <Button
+            onClick={() => void settleNow()}
+            disabled={operationBusy || enginePhase !== "Evaluating"}
+            variant="secondary"
+          >
+            {operationBusy && operationStatus?.toLowerCase().includes("settle")
+              ? operationStatus
+              : liveTender
+                ? "Submit on-chain settlement"
+                : "Create demo receipt"}
           </Button>
           <Button onClick={resetEngine} variant="ghost">
             Reset
           </Button>
         </div>
-        {!deadlineReached && (
-          <p className="mt-3 text-sm text-warning">
-            The deadline has not passed in this workbench clock, so the circuit will refuse
-            evaluation until closing.
+        {operationBusy && (
+          <p className="mt-3 text-sm text-muted-foreground" role="status" aria-live="polite">
+            {operationStatus ?? "Preparing the evaluation…"} Proof generation may take a few
+            minutes. Keep this tab open and approve in 1AM if prompted.
           </p>
         )}
-        {enginePhase === "Evaluating" && (
+        {operationStatus && !operationBusy && (
+          <p className="mt-3 text-sm text-success" role="status">
+            {operationStatus}
+          </p>
+        )}
+        {transactionHash && (
+          <p className="mt-2 break-all font-mono text-xs text-muted-foreground">
+            Network transaction: {transactionHash}
+          </p>
+        )}
+        {enginePhase === "Evaluating" && !liveTender && (
           <p className="mt-3 text-sm text-muted-foreground">
             {engineCommitments.length} commitments locked for proof. Selecting a non-optimal winner
             will fail closed with NOT_MAXIMUM / NOT_MINIMUM.
@@ -1758,7 +2170,7 @@ function SettlementWorkbench({ bids, tenders }: { bids: SubmittedBid[]; tenders:
   );
 }
 
-function Results({ tenders }: { tenders: Tender[] }) {
+function Results({ tenders, bids }: { tenders: Tender[]; bids: StoredBid[] }) {
   const completed = tenders.filter((tender) => tender.status !== "Active");
   return (
     <div className="mx-auto max-w-5xl px-5 py-12 sm:py-16">
@@ -1768,29 +2180,44 @@ function Results({ tenders }: { tenders: Tender[] }) {
         See which tenders are being reviewed and which have finished. Losing offers remain private.
       </p>
       <div className="mt-8 space-y-4">
-        {completed.map((tender) => (
-          <article key={tender.id} className="rounded-lg border border-border bg-card p-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <StatusPill status={tender.status} />
-                <h2 className="mt-3 font-display text-xl font-semibold text-card-foreground">
-                  {tender.title}
-                </h2>
-                <p className="mt-1 text-sm text-card-foreground/70">{tender.issuer}</p>
+        {completed.map((tender) => {
+          const youWon = matchesSavedBidToWinner(tender, bids);
+          return (
+            <article key={tender.id} className="rounded-lg border border-border bg-card p-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <StatusPill status={tender.status} />
+                  <h2 className="mt-3 font-display text-xl font-semibold text-card-foreground">
+                    {tender.title}
+                  </h2>
+                  <p className="mt-1 text-sm text-card-foreground/70">{tender.issuer}</p>
+                </div>
+                <div className="sm:text-right">
+                  <p
+                    className={`text-xs ${tender.status === "Settled" ? "text-success" : "text-card-foreground/60"}`}
+                  >
+                    Outcome
+                  </p>
+                  <p
+                    className={`mt-1 font-semibold ${tender.status === "Settled" ? "text-success" : "text-card-foreground"}`}
+                  >
+                    {youWon
+                      ? "You won this tender!"
+                      : tender.status === "Settled"
+                        ? "Winner confirmed"
+                        : "Review in progress"}
+                  </p>
+                </div>
               </div>
-              <div className="sm:text-right">
-                <p className="text-xs text-card-foreground/60">Outcome</p>
-                <p className="mt-1 font-semibold text-card-foreground">
-                  {tender.status === "Settled" ? "Winner confirmed" : "Review in progress"}
-                </p>
+              <div className="mt-4 flex items-center gap-2 border-t border-border pt-4 text-sm text-card-foreground/70">
+                <ShieldCheck className="size-4 text-success" />
+                {youWon
+                  ? "Your saved offer matches the winning on-chain commitment. The award itself is handled by the issuer."
+                  : "Selection rules verified; non-winning prices stay hidden."}
               </div>
-            </div>
-            <div className="mt-4 flex items-center gap-2 border-t border-border pt-4 text-sm text-card-foreground/70">
-              <ShieldCheck className="size-4 text-success" />
-              Selection rules verified; non-winning prices stay hidden.
-            </div>
-          </article>
-        ))}
+            </article>
+          );
+        })}
       </div>
     </div>
   );
@@ -2098,18 +2525,18 @@ export function AegisUserApp() {
           />
         )}
         {page === "compare" && <ComparePage bids={bids} tenders={chain.tenders} />}
-        {page === "settle" && <SettlementPage bids={bids} tenders={chain.tenders} />}
+        {page === "settle" && (
+          <SettlementPage bids={bids} tenders={chain.tenders} onSettled={chain.refresh} />
+        )}
         {page === "deploy" && (
           <DeployErrorBoundary onBack={() => navigate("home")}>
-            <Suspense
-              fallback={null}
-            >
+            <Suspense fallback={null}>
               <DeployPage />
             </Suspense>
           </DeployErrorBoundary>
         )}
         {page === "balance" && <BalancePage onGoDeploy={() => navigate("deploy")} />}
-        {page === "results" && <Results tenders={chain.tenders} />}
+        {page === "results" && <Results tenders={chain.tenders} bids={bids} />}
         {page === "about" && <HowItWorks />}
         <SiteFooter onNavigate={navigate} chain={chain} />
       </main>

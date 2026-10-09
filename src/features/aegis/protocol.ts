@@ -15,6 +15,8 @@ export type Tender = {
   contractAddress?: string;
   /** V2 tenders can use the V2 prover/verifier bundle. Legacy contracts cannot. */
   contractVersion?: 1 | 2;
+  /** Public winner receipt, present after the V2 settlement is indexed. */
+  settlement?: { winnerCommitment: string; winningValue: string };
 };
 
 /**
@@ -58,6 +60,8 @@ export type StoredBid = {
   amount: string;
   receipt: string;
   commitment: string;
+  /** Exact persistentCommit returned by the live V2 submitBid circuit. */
+  chainCommitment?: string;
   salt: string;
   bidderKey: string;
   /** Identity witness for live settlement proofs; empty for legacy rows. */
@@ -96,6 +100,9 @@ export function normalizeStoredBids(raw: unknown): StoredBid[] {
           ? (record["receipt"] as string)
           : (record["commitment"] as string),
       commitment: record["commitment"] as string,
+      ...(typeof record["chainCommitment"] === "string"
+        ? { chainCommitment: record["chainCommitment"] }
+        : {}),
       salt: typeof record["salt"] === "string" ? (record["salt"] as string) : "",
       bidderKey: typeof record["bidderKey"] === "string" ? (record["bidderKey"] as string) : "",
       identitySecret:
@@ -107,6 +114,23 @@ export function normalizeStoredBids(raw: unknown): StoredBid[] {
     });
   }
   return bids;
+}
+
+/** True only when this device has the exact on-chain commitment for this tender. */
+export function matchesSavedBidToWinner(tender: Tender, bids: StoredBid[]): boolean {
+  const winner = tender.settlement?.winnerCommitment;
+  const contractAddress = tender.contractAddress?.toLowerCase();
+  if (!winner || !contractAddress) return false;
+  const normalize = (value: string) => value.replace(/^0x/i, "").toLowerCase();
+  return bids.some(
+    (bid) =>
+      bid.accepted &&
+      bid.onChain &&
+      (bid.tenderId.toLowerCase() === tender.id.toLowerCase() ||
+        bid.tenderId.toLowerCase() === contractAddress) &&
+      typeof bid.chainCommitment === "string" &&
+      normalize(bid.chainCommitment) === normalize(winner),
+  );
 }
 
 export const proofStages = [
