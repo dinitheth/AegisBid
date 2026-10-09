@@ -17,7 +17,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatConnectorDust } from "../wallet";
-import { loadPublishedTenders, savePublishedTenders, type PublishedTender } from "../chain";
+import {
+  CURRENT_V2_PROOF_CONFIG,
+  loadPublishedTenders,
+  savePublishedTenders,
+  type PublishedTender,
+} from "../chain";
 
 import {
   connectDetectedWallet,
@@ -117,6 +122,7 @@ export function DeployPage() {
       mode: entry.mode,
       reserve: entry.reserve,
       v: String(entry.contractVersion ?? 1),
+      proof: entry.proofConfig,
     });
     return `${window.location.origin}${window.location.pathname}?${params.toString()}`;
   };
@@ -287,6 +293,7 @@ export function DeployPage() {
         deadline: new Date(deadline).toISOString(),
         deployedAt: Date.now(),
         contractVersion: 2,
+        proofConfig: CURRENT_V2_PROOF_CONFIG,
       };
       setPublished((items) => {
         const next = [record, ...items.filter((item) => item.address !== address)].slice(0, 20);

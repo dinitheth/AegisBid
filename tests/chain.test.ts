@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   FLAGSHIP_TENDER,
+  CURRENT_V2_PROOF_CONFIG,
   activityToTenders,
   applyLiveCounts,
   getChainConfig,
@@ -55,6 +56,7 @@ describe("published tenders", () => {
     deadline: new Date(Date.now() + 86_400_000).toISOString(),
     deployedAt: Date.now(),
     contractVersion: 2,
+    proofConfig: CURRENT_V2_PROOF_CONFIG,
   };
 
   it("maps a published tender to a biddable directory record", () => {
@@ -131,6 +133,7 @@ describe("shared tender links", () => {
       mode: "lowest",
       reserve: "2500",
       v: "2",
+      proof: CURRENT_V2_PROOF_CONFIG,
     });
     const parsed = parseSharedTender(`?${params.toString()}`);
     expect(parsed).toMatchObject({
@@ -145,7 +148,7 @@ describe("shared tender links", () => {
   it("rejects malformed addresses and sanitizes fields", () => {
     expect(parseSharedTender("?contract=xyz")).toBeNull();
     expect(parseSharedTender("")).toBeNull();
-    const parsed = parseSharedTender(`?contract=${address}&v=2&mode=bogus&reserve=abc&deadline=nope`);
+    const parsed = parseSharedTender(`?contract=${address}&v=2&proof=${CURRENT_V2_PROOF_CONFIG}&mode=bogus&reserve=abc&deadline=nope`);
     expect(parsed?.mode).toBe("highest");
     expect(parsed?.reserve).toBe("0");
     expect(parsed?.issuer).toBe("Shared tender");
@@ -156,7 +159,8 @@ describe("shared tender links", () => {
     expect(publishedContractVersion(v2)).toBe(2);
     expect(publishedContractVersion(address, 2)).toBe(2);
     expect(publishedContractVersion(address)).toBe(1);
-    expect(parseSharedTender(`?contract=${address}&v=2`)?.contractVersion).toBe(2);
+    expect(parseSharedTender(`?contract=${address}&v=2&proof=${CURRENT_V2_PROOF_CONFIG}`)?.contractVersion).toBe(2);
+    expect(parseSharedTender(`?contract=${address}&v=2`)).toBeNull();
     expect(parseSharedTender(`?contract=${address}`)).toBeNull();
   });
 });
@@ -170,6 +174,7 @@ describe("tender registry merge", () => {
     deadline: new Date(Date.now() + 86_400_000).toISOString(),
     deployedAt: Date.now(),
     contractVersion: 2,
+    proofConfig: CURRENT_V2_PROOF_CONFIG,
   });
   const addrA = "a".repeat(64);
   const addrB = "b".repeat(64);
@@ -189,6 +194,10 @@ describe("tender registry merge", () => {
 
   it("validates registry records strictly", () => {
     expect(isValidPublishedTender(local(addrA, "ok"))).toBe(true);
+    expect(isValidPublishedTender({ ...local(addrA, "old V2"), proofConfig: undefined })).toBe(false);
+    expect(
+      isValidPublishedTender({ ...local(addrA, "stale verifier"), proofConfig: "aegis-v2-old" }),
+    ).toBe(false);
     const legacy = { ...local(addrA, "legacy") } as Partial<PublishedTender>;
     delete legacy.contractVersion;
     expect(isValidPublishedTender(legacy)).toBe(false);

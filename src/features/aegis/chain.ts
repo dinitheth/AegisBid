@@ -9,6 +9,14 @@ import type { Tender } from "./protocol";
 
 export type ChainConfig = { indexerUrl: string; contractAddress: string };
 
+/**
+ * Identifies the immutable verifier-key bundle used by the current V2
+ * deployments. Bump this whenever the Compact circuits or verifier keys
+ * change so old listings cannot masquerade as compatible V2 tenders.
+ */
+export const CURRENT_V2_PROOF_CONFIG =
+  "aegis-v2-8c335f5f3edca4a431053bfd8ed137afbb2430b5" as const;
+
 const STORAGE_KEY = "aegis-chain-config";
 
 const envIndexer = (import.meta.env["VITE_MIDNIGHT_INDEXER_URL"] as string | undefined) ?? "";
@@ -29,6 +37,7 @@ export const FLAGSHIP_TENDER = {
   mode: "Highest bid" as const,
   specification: "Central park landscaping plus 12-month maintenance.",
   contractVersion: 2 as const,
+  proofConfig: CURRENT_V2_PROOF_CONFIG,
 };
 
 /** V2 contracts that predate the versioned share-link format. */
@@ -210,6 +219,8 @@ export type PublishedTender = {
   deployedAt: number;
   /** Every tender surfaced by the app is an authenticated V2 contract. */
   contractVersion: 2;
+  /** Exact verifier bundle required to prove calls against this deployment. */
+  proofConfig: typeof CURRENT_V2_PROOF_CONFIG;
 };
 
 const PUBLISHED_KEY = "aegis-published-tenders";
@@ -226,7 +237,8 @@ export function isValidPublishedTender(entry: unknown): entry is PublishedTender
     typeof record["reserve"] === "string" &&
     typeof record["deadline"] === "string" &&
     typeof record["deployedAt"] === "number" &&
-    record["contractVersion"] === 2
+    record["contractVersion"] === 2 &&
+    record["proofConfig"] === CURRENT_V2_PROOF_CONFIG
   );
 }
 
@@ -271,7 +283,8 @@ export function savePublishedTenders(items: PublishedTender[]): void {
 }
 
 /**
- * Parses a V2 tender share link (`?contract=<64-hex>&issuer=&deadline=&mode=&reserve=&v=2`).
+ * Parses a current V2 tender share link. Older V2 links without the active
+ * proof-config ID are deliberately rejected and never re-imported.
  * Tender policy is public by design, so encoding it in the link is safe —
  * it lets anyone who opens the link see the full honest tender (policy from
  * the link, live counts from the indexer) without a backend registry.
@@ -286,6 +299,7 @@ export function parseSharedTender(search: string): PublishedTender | null {
   }
   const address = (query.get("contract") ?? "").trim().toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(address)) return null;
+  if (query.get("proof") !== CURRENT_V2_PROOF_CONFIG) return null;
   // V1 links are historical records only. Do not re-import them into the
   // directory or present a disabled bid form to users.
   if (publishedContractVersion(address, query.get("v")) !== 2) return null;
@@ -299,6 +313,7 @@ export function parseSharedTender(search: string): PublishedTender | null {
     deadline: deadline && !Number.isNaN(Date.parse(deadline)) ? deadline : "",
     deployedAt: Date.now(),
     contractVersion: 2,
+    proofConfig: CURRENT_V2_PROOF_CONFIG,
   };
 }
 
