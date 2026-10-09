@@ -26,7 +26,7 @@ import {
   TenderPhase,
 } from "../../../../managed/aegis-bid-v2/contract/index.js";
 import { CONTRACT_CIRCUITS, hexToBytes, stringToBytes32, type ContractCircuit } from "./contract";
-import { fetchLatestBlockTime } from "../chain";
+import { browserIndexerQueryUrl, fetchLatestBlockTime } from "../chain";
 import type { OneAmConnectedApi } from "./oneAmWallet";
 import * as forensicsModule from "./forensics";
 
@@ -142,7 +142,9 @@ async function verifyLiveV2Contract(
 // A prover only creates a proof; it cannot publish a transaction by itself.
 // Timing this out is therefore safe: a late proof is discarded and the user
 // can retry without risking a duplicate deployment or bid.
-const PROVING_TIMEOUT_MS = 120_000;
+// Settlement proofs can be substantially larger than bid proofs (up to eight
+// private bid witnesses). Give 1AM's remote prover enough time to finish.
+const PROVING_TIMEOUT_MS = 10 * 60_000;
 const PROVING_PROVIDER_TIMEOUT_MS = 30_000;
 const WALLET_BALANCE_TIMEOUT_MS = 45_000;
 const WALLET_SUBMIT_TIMEOUT_MS = 90_000;
@@ -240,7 +242,10 @@ export async function buildConnectorBase(
   setNetworkId(config.networkId || "preprod");
 
   const zkConfigProvider = new FetchZkConfigProvider<ContractCircuit>(ZK_BASE, fetch.bind(window));
-  const publicDataProvider = indexerPublicDataProvider(config.indexerUri, config.indexerWsUri);
+  const publicDataProvider = indexerPublicDataProvider(
+    browserIndexerQueryUrl(config.indexerUri),
+    config.indexerWsUri,
+  );
   const privateStateProvider = createMemoryPrivateStateProvider();
 
   const keys = await api.getShieldedAddresses();
@@ -343,7 +348,10 @@ export async function readLiveTenderLedger(
 ): Promise<LiveTenderLedger> {
   const config = await api.getConfiguration();
   setNetworkId(config.networkId || "preprod");
-  const provider = indexerPublicDataProvider(config.indexerUri, config.indexerWsUri);
+  const provider = indexerPublicDataProvider(
+    browserIndexerQueryUrl(config.indexerUri),
+    config.indexerWsUri,
+  );
   const state = await provider.queryContractState(contractAddress);
   if (!state) throw new Error("The tender could not be found on the selected network.");
   const decoded = decodeLedger(state.data);
@@ -421,31 +429,17 @@ export const liveTenderPhases = {
  */
 function makeWalletProofProvider(provingProvider: unknown, report?: WalletOperationReporter) {
   return {
-    // Proving has no chain effects: retry transient (rate-limit) failures.
+    // Never automatically retry a proof request: the 1AM API does not expose
+    // cancellation, so a timed-out request may still be running remotely.
+    // Starting another one would stack expensive jobs for the same call.
     async proveTx(unprovenTx: { prove: (prover: unknown, cost: unknown) => Promise<unknown> }) {
-      let last: unknown = null;
-      for (let attempt = 1; attempt <= 3; attempt += 1) {
-        try {
-          const { CostModel } = await import("@midnight-ntwrk/ledger-v8");
-          report?.("Generating zero-knowledge proof…");
-          return await withSafeTimeout(
-            unprovenTx.prove(provingProvider, CostModel.initialCostModel()),
-            PROVING_TIMEOUT_MS,
-            "1AM did not finish generating the proof in two minutes. No transaction was sent. Reload the 1AM extension and try again.",
-          );
-        } catch (error) {
-          last = error;
-          const message = error instanceof Error ? error.message : String(error);
-          if (
-            !/rate|429|limit|timeout|network|fetch|econn|socket/i.test(message) ||
-            attempt === 3
-          ) {
-            throw error;
-          }
-          await new Promise((r) => setTimeout(r, attempt * 4000));
-        }
-      }
-      throw last;
+      const { CostModel } = await import("@midnight-ntwrk/ledger-v8");
+      report?.("Generating zero-knowledge proof…");
+      return withSafeTimeout(
+        unprovenTx.prove(provingProvider, CostModel.initialCostModel()),
+        PROVING_TIMEOUT_MS,
+        "1AM took longer than 10 minutes to generate this proof. No transaction was sent. The proof will not be retried automatically; check 1AM before starting another attempt.",
+      );
     },
   };
 }

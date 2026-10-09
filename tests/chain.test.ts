@@ -4,6 +4,7 @@ import {
   CURRENT_V2_PROOF_CONFIG,
   activityToTenders,
   applyLiveCounts,
+  browserIndexerQueryUrl,
   fetchChainActivity,
   fetchLatestBlockTime,
   getChainConfig,
@@ -47,6 +48,24 @@ describe("chain flagship", () => {
     expect(tender?.commitments).toBe(2);
     expect(tender?.status).toBe("Active");
     expect(tender?.contractAddress).toBe(FLAGSHIP_TENDER.contractAddress);
+  });
+});
+
+describe("Midnight indexer browser proxy URL", () => {
+  it("routes official hosted indexers through the same origin", () => {
+    vi.stubGlobal("window", { location: { origin: "https://aegisbid.vercel.app" } });
+    expect(browserIndexerQueryUrl("https://indexer.preprod.midnight.network/api/v4/graphql")).toBe(
+      "https://aegisbid.vercel.app/api/midnight/indexer?network=preprod",
+    );
+  });
+
+  it("does not proxy arbitrary or local indexer URLs", () => {
+    vi.stubGlobal("window", { location: { origin: "http://localhost:8080" } });
+    const local = "http://localhost:8088/api/v4/graphql";
+    const arbitrary = "https://example.com/api/v4/graphql";
+    expect(browserIndexerQueryUrl(local)).toBe(local);
+    expect(browserIndexerQueryUrl(arbitrary)).toBe(arbitrary);
+    vi.unstubAllGlobals();
   });
 });
 

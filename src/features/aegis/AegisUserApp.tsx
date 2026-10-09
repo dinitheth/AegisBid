@@ -1811,7 +1811,11 @@ function SettlementWorkbench({
   const losingRedacted = receipt
     ? witnesses
         .filter((_, index) => index !== safeWinningIndex)
-        .every((w) => !JSON.stringify(receipt).includes(w.amount.toString()))
+        // `winningValue` is a bigint, which JSON.stringify cannot serialize.
+        // The public receipt exposes that one value directly; commitments and
+        // comparison roots are hashes, so compare losing amounts to the value
+        // the receipt actually reveals instead of serializing the whole object.
+        .every((w) => w.amount !== receipt.winningValue)
     : false;
 
   return (
@@ -2057,8 +2061,9 @@ function SettlementWorkbench({
         </div>
         {operationBusy && (
           <p className="mt-3 text-sm text-muted-foreground" role="status" aria-live="polite">
-            {operationStatus ?? "Preparing the evaluation…"} Proof generation may take a few
-            minutes. Keep this tab open and approve in 1AM if prompted.
+            {operationStatus ?? "Preparing the evaluation…"} Proof generation can take several
+            minutes. Keep this tab open and approve in 1AM if prompted; don’t start another attempt
+            while this one is running.
           </p>
         )}
         {operationStatus && !operationBusy && (

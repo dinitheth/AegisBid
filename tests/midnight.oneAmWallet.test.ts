@@ -3,6 +3,7 @@ import {
   CONNECT_TIMEOUT_MS,
   WALLET_DETAILS_TIMEOUT_MS,
   connectDetectedWallet,
+  friendlyWalletConnectionError,
   friendlyWalletError,
   refreshDetectedWallet,
   type DetectedWallet,
@@ -166,5 +167,19 @@ describe("friendlyWalletError", () => {
   it("handles empty causes", () => {
     expect(friendlyWalletError(undefined)).toBe("The transaction was not completed.");
     expect(friendlyWalletError(null)).toBe("The transaction was not completed.");
+  });
+});
+
+describe("friendlyWalletConnectionError", () => {
+  it("explains how to recover when the wallet connection request fails", () => {
+    expect(friendlyWalletConnectionError(new Error("Request failed"))).toBe(
+      "AegisBid couldn't reach your 1AM wallet. Open the 1AM extension, unlock it, and make sure it is set to preprod, then try again. If it is already open and unlocked, check your connection and whether 1AM is responding.",
+    );
+  });
+
+  it("preserves specific wallet errors instead of calling them locked-wallet failures", () => {
+    expect(friendlyWalletConnectionError(new Error("User rejected the request"))).toBe(
+      "You declined the request in your wallet. Nothing was sent — try again whenever you're ready.",
+    );
   });
 });

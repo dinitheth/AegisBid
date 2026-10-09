@@ -15,6 +15,11 @@ It is built for the **Midnight Wave 2** hackathon track and runs against **Midni
 - **Duplicate supplied-identity prevention:** a tender-scoped nullifier prevents reuse of the same supplied bidder key for that tender.
 - **Inspectable results:** the public record exposes the winning commitment and settlement outcome while keeping losing offers sealed.
 
+The evaluator must obtain private witnesses for every bid after closing. The
+current UI supports encrypted witness-file handoff through a separate trusted
+channel. This is not automatic recovery, and AegisBid does not transfer the
+real-world award or payment.
+
 ## Live V2 deployment
 
 The current V2 tender contract is deployed on Midnight Preprod:
@@ -154,7 +159,10 @@ The Azure Ubuntu builder VM was used to compile the current V2 package; it is a 
 ## Project resources
 
 - [Wave 1 submission archive](docs/WAVE1-SUBMISSION.md)
-- [Pitch deck](docs/pitch-deck.md)
+- [Wave 2 submission notes](docs/WAVE2-SUBMISSION.md)
+- [Event criteria, rules conflicts, and readiness review](docs/AKINDO-WAVE2-REVIEW.md)
+- [Wave 2 pitch deck source](docs/pitch-deck.md)
+- [Prepared Wave 2 slide deck](submission/AegisBid-Wave2-v2.pptx)
 - [Demo script](docs/demo-script.md)
 - [Midnight integration notes](docs/MIDNIGHT_INTEGRATION.md)
 - [Compact documentation](https://docs.midnight.network/compact/reference/compact-reference)

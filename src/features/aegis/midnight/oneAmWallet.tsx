@@ -209,6 +209,25 @@ export function friendlyWalletError(cause: unknown): string {
   return "The wallet request didn't complete. Please try again, and check the wallet extension if it keeps happening.";
 }
 
+/**
+ * Connection handshakes can fail with unhelpful transport errors such as
+ * "Request failed" when 1AM is closed, locked, or its extension service is
+ * temporarily unreachable. Keep this message scoped to connection attempts;
+ * the same text during indexer/proof work may have a different cause.
+ */
+export function friendlyWalletConnectionError(cause: unknown): string {
+  const friendly = friendlyWalletError(cause);
+  const raw = cause instanceof Error ? cause.message : String(cause ?? "");
+  if (
+    /request failed|failed to fetch|could not establish connection|receiving end does not exist|message port closed/i.test(
+      raw,
+    )
+  ) {
+    return "AegisBid couldn't reach your 1AM wallet. Open the 1AM extension, unlock it, and make sure it is set to preprod, then try again. If it is already open and unlocked, check your connection and whether 1AM is responding.";
+  }
+  return friendly;
+}
+
 function readFlag(): boolean {
   try {
     return typeof window !== "undefined" && window.localStorage.getItem(CONNECT_FLAG) === "1";

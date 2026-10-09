@@ -10,6 +10,25 @@ import type { Tender } from "./protocol";
 export type ChainConfig = { indexerUrl: string; contractAddress: string };
 
 /**
+ * Browser reads of Midnight's hosted GraphQL indexers go through our
+ * same-origin server proxy. The public preprod indexer can reject browser
+ * CORS preflights, while server-to-server requests are not subject to CORS.
+ * Only the official public network hosts are mapped; arbitrary configured
+ * URLs continue to be used as-is and are never forwarded by our server.
+ */
+export function browserIndexerQueryUrl(indexerUrl: string): string {
+  if (typeof window === "undefined") return indexerUrl;
+  try {
+    const url = new URL(indexerUrl);
+    const match = /^indexer\.(preview|preprod|mainnet)\.midnight\.network$/i.exec(url.hostname);
+    if (!match || url.pathname.replace(/\/+$/, "") !== "/api/v4/graphql") return indexerUrl;
+    return `${window.location.origin}/api/midnight/indexer?network=${match[1]?.toLowerCase()}`;
+  } catch {
+    return indexerUrl;
+  }
+}
+
+/**
  * Identifies the immutable verifier-key bundle used by the current V2
  * deployments. Bump this whenever the Compact circuits or verifier keys
  * change so old listings cannot masquerade as compatible V2 tenders.
@@ -136,7 +155,7 @@ const STATE_QUERY = `query ContractState($address: HexEncoded!) {
 }`;
 
 async function callIndexer<T>(config: ChainConfig, query: string): Promise<T> {
-  const response = await fetch(config.indexerUrl, {
+  const response = await fetch(browserIndexerQueryUrl(config.indexerUrl), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ query, variables: { address: config.contractAddress } }),
@@ -153,7 +172,7 @@ async function callIndexer<T>(config: ChainConfig, query: string): Promise<T> {
 
 /** Reads the network clock from the latest indexed block (not the device clock). */
 export async function fetchLatestBlockTime(indexerUrl: string): Promise<number> {
-  const response = await fetch(indexerUrl, {
+  const response = await fetch(browserIndexerQueryUrl(indexerUrl), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ query: "query LatestBlockTime { block { timestamp } }" }),

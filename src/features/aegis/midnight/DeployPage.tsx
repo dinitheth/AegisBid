@@ -26,6 +26,7 @@ import {
   refreshDetectedWallet,
   detectWalletConnectors,
   friendlyWalletError,
+  friendlyWalletConnectionError,
   useOneAmWallet,
   type DetectedWallet,
 } from "./oneAmWallet";
@@ -176,7 +177,7 @@ export function DeployPage() {
       setConnected(connectedApi, info);
       setConnectionStatus(null);
     } catch (cause) {
-      setFailure(friendlyWalletError(cause));
+      setFailure(friendlyWalletConnectionError(cause));
       setFailureArea("connection");
       const detail = cause instanceof Error ? (cause.stack ?? cause.message) : String(cause);
       setFailureDetail(detail.slice(0, 800));
@@ -309,7 +310,10 @@ export function DeployPage() {
       // Full technical detail stays in the console; the screen gets one
       // plain sentence.
       console.error(`Deploy failed during ${step}:`, cause);
-      const friendly = friendlyWalletError(cause);
+      const friendly =
+        step === "refreshing the wallet connection"
+          ? friendlyWalletConnectionError(cause)
+          : friendlyWalletError(cause);
       const hint = /rate|429|limit/i.test(String(cause))
         ? " Public services are busy — wait a minute and retry."
         : "";

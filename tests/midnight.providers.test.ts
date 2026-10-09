@@ -169,6 +169,26 @@ describe("midnight providers", () => {
     expect(messages).toContain("Preparing the transaction with 1AM...");
   });
 
+  it("does not start duplicate proof requests after a transient prover failure", async () => {
+    let proofCalls = 0;
+    const built = await withBrowserWindow(() => buildOneAmProviders(mockConnectorApi("wallet")));
+    const { proofProvider } = built.providers as unknown as {
+      proofProvider: {
+        proveTx(input: { prove: () => Promise<unknown> }): Promise<unknown>;
+      };
+    };
+
+    await expect(
+      proofProvider.proveTx({
+        prove: async () => {
+          proofCalls += 1;
+          throw new Error("network timeout");
+        },
+      }),
+    ).rejects.toThrow("network timeout");
+    expect(proofCalls).toBe(1);
+  });
+
   it("scopes private states per contract address", async () => {
     const store = createMemoryPrivateStateProvider();
     store.setContractAddress("addr-a");

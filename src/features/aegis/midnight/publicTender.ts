@@ -1,4 +1,5 @@
 import { indexerPublicDataProvider } from "@midnight-ntwrk/midnight-js-indexer-public-data-provider";
+import { browserIndexerQueryUrl } from "../chain";
 
 export type PublicTenderSettlement = { winnerCommitment: string; winningValue: string };
 
@@ -27,7 +28,7 @@ export async function readPublicTenderSettlement(
   ensureBrowserBuffer();
   const { ledger } = await import("../../../../managed/aegis-bid-v2/contract/index.js");
   const wsUrl = indexerUrl.replace(/^https:/i, "wss:").replace(/^http:/i, "ws:");
-  const provider = indexerPublicDataProvider(indexerUrl, wsUrl);
+  const provider = indexerPublicDataProvider(browserIndexerQueryUrl(indexerUrl), wsUrl);
   const state = await provider.queryContractState(contractAddress);
   if (!state) return undefined;
   return settlementFromLedger(ledger(state.data));

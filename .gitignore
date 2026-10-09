@@ -33,6 +33,7 @@ dist-ssr
 
 # Build outputs
 .vercel
+.codex-presentation-build/
 
 # Local env (public values live in .env.example; real .env stays on machines)
 .env
