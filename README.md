@@ -54,7 +54,7 @@ Do not configure the legacy `VITE_ZK_CONFIG_BASE` for a V2 deployment. To host V
 | Deployable Compact contract | [`contracts/aegis_bid_v2.compact`](contracts/aegis_bid_v2.compact) | V2 tender rules and ZK circuits |
 | Generated V2 bindings | [`managed/aegis-bid-v2/contract`](managed/aegis-bid-v2/contract) | Browser contract integration |
 | V2 prover/verifier assets | [`managed/aegis-bid-v2`](managed/aegis-bid-v2) | `submitBid`, `beginEvaluation`, and `settle` proofs |
-| Browser integration | [`src/features/aegis/midnight`](src/features/aegis/midnight) | 1AM/Lace connector, provider stack, deployment UI |
+| Browser integration | [`src/features/aegis/midnight`](src/features/aegis/midnight) | 1AM connector, provider stack, deployment UI |
 | Security-shape gate | [`scripts/compact-v2-check.mjs`](scripts/compact-v2-check.mjs) | Guards V2 invariants before release |
 
 V2 uses Compact **0.31.1** / Ledger 8-compatible generated artifacts. The full V2 compile was verified on the Azure builder VM because the Compact ZK backend requires a compatible AVX-capable CPU.
@@ -130,7 +130,7 @@ npm run build            # production browser/server build
 | `tests/chain.test.ts` | Tender discovery, shared links, live-count overlays, registry validation |
 | `tests/wallet.test.ts` | Wallet balance display handling |
 | `tests/midnight.contract.test.ts` | Generated contract mapping and witness construction |
-| `tests/midnight.providers.test.ts` | V2 asset path, provider assembly, wallet/proof-server selection, private-state scope |
+| `tests/midnight.providers.test.ts` | V2 asset path, 1AM-only connector detection, provider assembly, private-state scope |
 | `tests/midnight.oneAmWallet.test.ts` | Connector discovery, timeouts, and wallet error messages |
 | `tests/midnight.networks.test.ts` | Pinned network configuration |
 | `tests/midnight.forensics.test.ts` | Transaction-assembly diagnostic retention |

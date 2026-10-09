@@ -1,10 +1,7 @@
 /**
- * Shared browser-wallet connection (Lace preferred, 1AM fallback). Both
- * wallets speak the same Midnight DApp connector protocol
- * (`@midnight-ntwrk/dapp-connector-api`: `connect(networkId)` on
- * `window.midnight[<walletId>]`), so one context serves both. The Live
- * deploy page establishes the connection; the header wallet button (and
- * later pages) read it from here so the whole app reflects one wallet.
+ * Shared 1AM browser-wallet connection using the Midnight DApp connector
+ * protocol (`connect(networkId)` on `window.midnight.1am`). The Live deploy
+ * page establishes the connection; the header and other pages reuse it.
  */
 import {
   createContext,
@@ -43,15 +40,15 @@ export type WalletInfo = {
   networkId: string;
   unshieldedAddress: string;
   dustBalance: string;
-  /** Display name of the connected wallet ("Lace" or "1AM"). */
+  /** Display name of the connected wallet. */
   walletName: string;
 };
 
-export type WalletKind = "lace" | "1am";
+export type WalletKind = "1am";
 
 export type DetectedWallet = {
   kind: WalletKind;
-  /** `window.midnight` key the wallet injected under (e.g. "mnLace", "lace", "1am"). */
+  /** `window.midnight` key the wallet injected under (normally "1am"). */
   key: string;
   label: string;
   initial: OneAmInitialApi;
@@ -64,27 +61,23 @@ function asInitialApi(injected: unknown): OneAmInitialApi | null {
 }
 
 /**
- * Pure scan of a `window.midnight`-shaped record. Lace first (it holds real
- * user funds and works today), 1AM second. Exported for unit tests.
+ * Pure scan of a `window.midnight`-shaped record for the supported 1AM
+ * connector. Exported for unit tests.
  */
 export function listWalletConnectors(
   midnight: Record<string, unknown> | undefined,
 ): DetectedWallet[] {
   if (!midnight || typeof midnight !== "object") return [];
   const found: DetectedWallet[] = [];
-  const take = (kind: WalletKind, key: string, label: string) => {
-    if (found.some((entry) => entry.kind === kind)) return;
+  const take = (key: string) => {
     const initial = asInitialApi(midnight[key]);
-    if (initial) found.push({ kind, key, label, initial });
+    if (initial && !found.some((entry) => entry.kind === "1am")) {
+      found.push({ kind: "1am", key, label: "1AM", initial });
+    }
   };
-  // Lace: documented as `mnLace`; accept any lace-ish key for robustness.
-  take("lace", "mnLace", "Lace");
+  take("1am");
   for (const key of Object.keys(midnight)) {
-    if (key.toLowerCase().includes("lace")) take("lace", key, "Lace");
-  }
-  take("1am", "1am", "1AM");
-  for (const key of Object.keys(midnight)) {
-    if (key.toLowerCase().includes("1am")) take("1am", key, "1AM");
+    if (key.toLowerCase().includes("1am")) take(key);
   }
   return found;
 }
@@ -99,10 +92,6 @@ const CONNECT_FLAG = "aegis-1am-connected";
 
 export function detectOneAm(): OneAmInitialApi | null {
   return detectWalletConnectors().find((entry) => entry.kind === "1am")?.initial ?? null;
-}
-
-export function detectLace(): OneAmInitialApi | null {
-  return detectWalletConnectors().find((entry) => entry.kind === "lace")?.initial ?? null;
 }
 
 // A wallet extension can hang when its own backend is unreachable (1AM's
@@ -177,12 +166,9 @@ export async function refreshDetectedWallet(
   walletName?: string,
 ): Promise<{ api: OneAmConnectedApi; info: WalletInfo }> {
   const detected = detectWalletConnectors();
-  const entry =
-    detected.find((item) => item.label === walletName) ??
-    detected.find((item) => item.kind === "1am") ??
-    detected[0];
+  const entry = detected.find((item) => item.label === walletName) ?? detected[0];
   if (!entry) {
-    throw new Error("No Midnight wallet was detected. Unlock 1AM and try again.");
+    throw new Error("No 1AM wallet was detected. Unlock 1AM and try again.");
   }
   return connectDetectedWallet(entry);
 }
@@ -263,8 +249,7 @@ export function OneAmWalletProvider({ children }: { children: ReactNode }) {
     setInfo(null);
     writeFlag(false);
   }, []);
-  // Reconnect quietly on reload when the user connected before. Lace
-  // first (it works today), 1AM second. No cascade: if the preferred wallet
+  // Reconnect quietly on reload when the user connected before. No cascade: if 1AM
   // rejects (user gesture needed), the user reconnects manually — prompting
   // a second wallet uninvited would be worse. If the wallet needs a fresh
   // gesture it rejects and the user connects manually.

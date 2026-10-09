@@ -20,12 +20,7 @@ import {
   verifyContractState,
 } from "@midnight-ntwrk/midnight-js-contracts";
 import { Contract, TenderMode } from "../../../../managed/aegis-bid-v2/contract/index.js";
-import {
-  CONTRACT_CIRCUITS,
-  hexToBytes,
-  stringToBytes32,
-  type ContractCircuit,
-} from "./contract";
+import { CONTRACT_CIRCUITS, hexToBytes, stringToBytes32, type ContractCircuit } from "./contract";
 import type { OneAmConnectedApi } from "./oneAmWallet";
 import * as forensicsModule from "./forensics";
 
@@ -97,14 +92,14 @@ export function toBindingTenderConfig(input: LedgerTenderInput) {
   };
 }
 
-export type ProvingVia = "wallet" | "proof-server";
+export type ProvingVia = "wallet";
 
 export type AegisProviders = {
   providers: Parameters<typeof deployContract>[0];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   compiled: any;
   publicDataProvider: ReturnType<typeof indexerPublicDataProvider>;
-  /** Where proofs come from: the wallet (1AM/ProofStation) or the local proof server (Lace fallback). */
+  /** Proofs are generated through the connected 1AM wallet. */
   provingVia: ProvingVia;
   /**
    * Account material already read while assembling the provider stack.
@@ -152,7 +147,10 @@ const WALLET_SUBMIT_TIMEOUT_MS = 90_000;
 // same connected wallet session. Failed attempts are never cached.
 const oneAmProvingProviders = new WeakMap<object, Promise<unknown>>();
 
-function getCachedOneAmProvingProvider(api: OneAmConnectedApi, keyProvider: unknown): Promise<unknown> {
+function getCachedOneAmProvingProvider(
+  api: OneAmConnectedApi,
+  keyProvider: unknown,
+): Promise<unknown> {
   const existing = oneAmProvingProviders.get(api);
   if (existing) return existing;
   const pending = withSafeTimeout(
@@ -180,12 +178,6 @@ function withSafeTimeout<T>(operation: Promise<T>, timeoutMs: number, message: s
     );
   });
 }
-
-/** Local proof server for wallets that don't prove in-extension (Lace). */
-export const PROOF_SERVER_URL =
-  (import.meta.env["VITE_MIDNIGHT_PROOF_SERVER"] as string | undefined) ||
-  (import.meta.env["VITE_PROOF_SERVER_URL"] as string | undefined) ||
-  "http://127.0.0.1:6300";
 
 /**
  * In-memory private-state provider. `deployContract`/`submitCallTx` require
@@ -320,7 +312,9 @@ function makeWalletProofProvider(provingProvider: unknown, report?: WalletOperat
       for (let attempt = 1; attempt <= 3; attempt += 1) {
         try {
           const { CostModel } = await import("@midnight-ntwrk/ledger-v8");
-          report?.("Generating the zero-knowledge proof with 1AM. The approval appears after this step...");
+          report?.(
+            "Generating the zero-knowledge proof with 1AM. The approval appears after this step...",
+          );
           return await withSafeTimeout(
             unprovenTx.prove(provingProvider, CostModel.initialCostModel()),
             PROVING_TIMEOUT_MS,
@@ -386,68 +380,6 @@ export async function buildOneAmProviders(
   };
 }
 
-/**
- * Lace provider stack. Tries wallet-delegated proving first; if the wallet
- * declines (Lace proves via an external proof server, not in-extension),
- * falls back to the local proof server — `VITE_PROOF_SERVER_URL`, default
- * `http://127.0.0.1:6300`, which Lace itself requires running via Docker.
- */
-export async function buildLaceProviders(
-  api: OneAmConnectedApi,
-  bid?: PrivateBidWitnesses,
-  opts?: { proofServerUrl?: string },
-  contractAddress?: string,
-): Promise<AegisProviders> {
-  const {
-    walletCoinPublicKey,
-    networkId,
-    zkConfigProvider,
-    publicDataProvider,
-    privateStateProvider,
-    walletProvider,
-    midnightProvider,
-    compiled,
-  } = await buildConnectorBase(api, bid);
-
-  if (contractAddress) {
-    await verifyLiveV2Contract(zkConfigProvider, publicDataProvider, contractAddress);
-  }
-
-  let provingVia: ProvingVia = "wallet";
-  // Loose on purpose: the assembled providers object is cast for
-  // deployContract below (its generics can't express both provers).
-  let proofProvider: unknown;
-  try {
-    const provingProvider = await api.getProvingProvider(zkConfigProvider);
-    proofProvider = makeWalletProofProvider(provingProvider);
-  } catch {
-    provingVia = "proof-server";
-    const { httpClientProofProvider } =
-      await import("@midnight-ntwrk/midnight-js-http-client-proof-provider");
-    proofProvider = httpClientProofProvider(
-      opts?.proofServerUrl ?? PROOF_SERVER_URL,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      zkConfigProvider as any,
-    );
-  }
-  return {
-    providers: {
-      publicDataProvider,
-      zkConfigProvider,
-      privateStateProvider,
-      proofProvider,
-      walletProvider,
-      midnightProvider,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any,
-    compiled,
-    publicDataProvider,
-    provingVia,
-    walletCoinPublicKey,
-    networkId,
-  };
-}
-
 export const ctorName = (value: unknown): string => {
   if (value === null) return "null";
   if (value === undefined) return "undefined";
@@ -462,16 +394,13 @@ export async function submitLiveBid(input: {
   contractAddress: string;
   witnesses: PrivateBidWitnesses;
   bidderKey: Uint8Array;
-  /** Lace uses wallet-or-proof-server proving; 1AM always delegates to the wallet. */
-  walletKind?: "lace" | "1am";
-  proofServerUrl?: string;
 }): Promise<string> {
-  const laceOpts =
-    input.proofServerUrl === undefined ? undefined : { proofServerUrl: input.proofServerUrl };
-  const { providers, compiled, walletCoinPublicKey, networkId } =
-    input.walletKind === "lace"
-      ? await buildLaceProviders(input.api, input.witnesses, laceOpts, input.contractAddress)
-      : await buildOneAmProviders(input.api, input.witnesses, undefined, input.contractAddress);
+  const { providers, compiled, walletCoinPublicKey, networkId } = await buildOneAmProviders(
+    input.api,
+    input.witnesses,
+    undefined,
+    input.contractAddress,
+  );
 
   // Derive the secret key from the wallet's shielded coin public key for the private state.
   // The contract uses this secret key to derive p1_key/p2_key for the bid commitment.

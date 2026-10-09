@@ -29,14 +29,11 @@
   `expected instance of …` WASM failures); pin `compact-runtime@0.16.0` to
   match the bindings; give the proof server swap (it OOMs proving `settle`
   on small boxes — exit 137).
-- Browser wallets: Lace (primary) + 1AM (fallback) share the Midnight DApp
-  connector protocol (`oneAmWallet.tsx` scans `window.midnight` keys —
-  `mnLace`/`lace` first, `1am` second). Both plug into the same provider
-  stack (`providers.ts`): 1AM delegates proving to the wallet (fees
-  sponsored); Lace tries wallet proving, then falls back to the local proof
-  server (`VITE_MIDNIGHT_PROOF_SERVER`, default `http://127.0.0.1:6300` —
-  run it via Docker, as Lace requires). Deploy page offers both connects;
-  bidding submits through whichever wallet is connected.
+- Browser wallet: **1AM only**. `oneAmWallet.tsx` detects the 1AM connector
+  on `window.midnight`, refreshes the connector session before transactions,
+  and shares the connected session across the app. `providers.ts` delegates
+  proving, balancing, and submission to 1AM; no Lace connector or local proof
+  server fallback is part of the browser flow.
 - Global discovery: the directory queries one configured contract, so new
   publishes would stay invisible to everyone else. `tenderRegistry.server.ts`
   keeps a shared newest-first list (Upstash Redis REST via
@@ -76,8 +73,8 @@ node scripts/midnight-status.mjs
 
 ## Promoting to preprod
 
-1. Fund a wallet: faucet tNIGHT, register for tDUST in Lace
-   (`docs.midnight.network/guides/acquire-tokens`).
+1. Fund the 1AM preprod wallet with test tNIGHT/tDUST using the Midnight
+   faucet and the current 1AM wallet flow.
 2. `export MIDNIGHT_SEED=<64-hex>` (never commit it).
 3. `node scripts/midnight-deploy.mjs --network preprod`.
 4. Confirm the address on a preprod explorer, then record it in

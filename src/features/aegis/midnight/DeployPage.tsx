@@ -1,12 +1,9 @@
 /**
- * Live deployment through a browser wallet (preprod): Lace preferred, 1AM
- * fallback. Both speak the Midnight DApp connector protocol
+ * Live deployment through the 1AM browser wallet on preprod. It speaks the Midnight DApp connector protocol
  * (`window.midnight[<walletId>].connect`), so detection just scans the
  * injected keys. Providers: FetchZkConfigProvider for the hosted proving
- * keys, indexer provider from the wallet's own config, proving delegated to
- * the wallet when it offers (1AM/ProofStation sponsors fees: user pays 0
- * NIGHT/DUST) or to the local proof server otherwise (Lace requires it via
- * Docker: `VITE_PROOF_SERVER_URL`, default `http://127.0.0.1:6300`).
+ * keys, indexer provider from the wallet's own config, with proof generation,
+ * balancing, and transaction submission delegated to 1AM.
  *
  * ZK artifacts come from `VITE_ZK_CONFIG_BASE` (default: jsDelivr for the
  * committed `managed/aegis-bid-v2` outputs).
@@ -31,7 +28,6 @@ import {
   friendlyWalletError,
   useOneAmWallet,
   type DetectedWallet,
-  type WalletKind,
 } from "./oneAmWallet";
 
 function defaultDeadlineInput() {
@@ -164,8 +160,8 @@ export function DeployPage() {
     };
   }, [detectTick]);
 
-  const connect = async (kind: WalletKind) => {
-    const entry = wallets.find((item) => item.kind === kind);
+  const connect = async () => {
+    const entry = wallets[0];
     if (!entry) return;
     if (publishing) return;
     setConnecting(true);
@@ -234,7 +230,7 @@ export function DeployPage() {
       const activeInfo = refreshed.info;
       step = "connecting providers";
       setPublishStatus("Downloading proving keys (one-time, ~14 MB)...");
-      const walletLabel = activeInfo.walletName === "Lace" ? "Lace" : "1AM";
+      const walletLabel = "1AM";
       // V2 stores a commitment to this capability, not the capability itself.
       // It is required to move a tender into evaluation or settle it, so keep
       // a local recovery copy keyed by the deployed address below.
@@ -245,21 +241,11 @@ export function DeployPage() {
         bidderKey: new Uint8Array(32),
         evaluatorSecret,
       };
-      const [
-        { buildLaceProviders, buildOneAmProviders, toBindingTenderConfig, bytesToHex },
-        { deployContract },
-      ] = await Promise.all([
-        import("./providers"),
-        import("@midnight-ntwrk/midnight-js-contracts"),
-      ]);
-      const { providers, compiled, provingVia } = await withRetry("connecting providers", () =>
-        walletLabel === "Lace"
-          ? buildLaceProviders(activeApi, deploymentWitnesses)
-          : buildOneAmProviders(activeApi, deploymentWitnesses, setPublishStatus),
+      const [{ buildOneAmProviders, toBindingTenderConfig, bytesToHex }, { deployContract }] =
+        await Promise.all([import("./providers"), import("@midnight-ntwrk/midnight-js-contracts")]);
+      const { providers, compiled } = await withRetry("connecting providers", () =>
+        buildOneAmProviders(activeApi, deploymentWitnesses, setPublishStatus),
       );
-      if (provingVia === "proof-server") {
-        setPublishStatus("Wallet delegates proving: using your local proof server...");
-      }
 
       step = "building the deployment transaction";
       setPublishStatus("Building the deployment transaction...");
@@ -338,7 +324,7 @@ export function DeployPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-5 py-12 sm:py-16">
-      <p className="text-sm font-semibold text-primary">Preprod · Lace or 1AM wallet</p>
+      <p className="text-sm font-semibold text-primary">Preprod · 1AM wallet</p>
       <h1 className="mt-2 font-display text-4xl font-semibold text-foreground">
         Publish an opportunity
       </h1>
@@ -353,7 +339,7 @@ export function DeployPage() {
         {wallets.length === 0 ? (
           <div className="mt-2 text-sm text-card-foreground/70">
             <p>
-              No wallet detected yet. Install Lace (with Midnight support) or 1AM from{" "}
+              No 1AM wallet detected yet. Install 1AM from{" "}
               <a
                 className="underline"
                 href="https://chromewebstore.google.com/detail/1am/bphnkdkcnfhompoegfpgnkidcjfbojjp"
@@ -388,10 +374,10 @@ export function DeployPage() {
           </dl>
         ) : (
           <div className="mt-4 flex flex-wrap gap-3">
-            {wallets.map((entry) => (
+            {wallets.slice(0, 1).map((entry) => (
               <Button
                 key={entry.kind}
-                onClick={() => void connect(entry.kind)}
+                onClick={() => void connect()}
                 disabled={connecting || publishing}
               >
                 {connecting ? "Waiting for wallet..." : `Connect ${entry.label} (preprod)`}

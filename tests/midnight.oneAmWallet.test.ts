@@ -36,12 +36,12 @@ describe("connectDetectedWallet", () => {
     });
   });
 
-  it("times out instead of hanging on a silent wallet", async () => {
+  it("times out instead of hanging on a silent 1AM connection", async () => {
     vi.useFakeTimers();
     const entry = {
-      kind: "lace",
-      key: "mnLace",
-      label: "Lace",
+      kind: "1am",
+      key: "1am",
+      label: "1AM",
       initial: { connect: () => new Promise<OneAmInitialApi>(() => {}) },
     } as unknown as DetectedWallet;
     const pending = connectDetectedWallet(entry);

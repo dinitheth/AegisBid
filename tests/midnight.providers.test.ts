@@ -4,7 +4,6 @@ import { Contract } from "../managed/aegis-bid-v2/contract/index.js";
 import {
   ZK_BASE,
   buildOneAmProviders,
-  buildLaceProviders,
   bytesToHex,
   createMemoryPrivateStateProvider,
   toBindingTenderConfig,
@@ -97,24 +96,18 @@ describe("midnight providers", () => {
     expect(compiled).toBeDefined();
   });
 
-  it("detects Lace under mnLace or lace keys, 1AM under 1am", () => {
+  it("detects only 1AM and ignores Lace connectors", () => {
     const connect = async () => ({}) as never;
     expect(listWalletConnectors(undefined)).toEqual([]);
     expect(listWalletConnectors({})).toEqual([]);
-    const wallets = listWalletConnectors({
-      mnLace: { connect },
-      "1am": { connect },
-      other: {},
-    });
-    expect(wallets.map((entry) => entry.kind)).toEqual(["lace", "1am"]);
-    expect(wallets[0]?.key).toBe("mnLace");
-    expect(listWalletConnectors({ lace: { connect } }).map((entry) => entry.kind)).toEqual([
-      "lace",
-    ]);
+    const wallets = listWalletConnectors({ mnLace: { connect }, "1am": { connect }, other: {} });
+    expect(wallets.map((entry) => entry.kind)).toEqual(["1am"]);
+    expect(wallets[0]?.key).toBe("1am");
+    expect(listWalletConnectors({ lace: { connect }, mnLace: { connect } })).toEqual([]);
   });
 
-  // buildLaceProviders binds fetch to window (browser global); the node
-  // test env has none, so stub it for the duration of each builder call.
+  // Provider setup binds fetch to window (browser global); the node test env
+  // has none, so stub it for the duration of each builder call.
   async function withBrowserWindow<T>(fn: () => Promise<T>): Promise<T> {
     const globals = globalThis as Record<string, unknown>;
     const prev = globals["window"];
@@ -126,13 +119,6 @@ describe("midnight providers", () => {
       else globals["window"] = prev;
     }
   }
-
-  it("proves via the wallet when Lace delegates proving", async () => {
-    const built = await withBrowserWindow(() => buildLaceProviders(mockConnectorApi("wallet")));
-    expect(built.provingVia).toBe("wallet");
-    expect(built.providers).toBeDefined();
-    expect(built.compiled).toBeDefined();
-  });
 
   it("reads wallet account details only once while assembling a 1AM stack", async () => {
     let configurationReads = 0;
@@ -170,23 +156,17 @@ describe("midnight providers", () => {
   it("reports the balance stage through the 1AM provider stack", async () => {
     const messages: string[] = [];
     const built = await withBrowserWindow(() =>
-      buildOneAmProviders(mockConnectorApi("wallet"), undefined, (message) => messages.push(message)),
+      buildOneAmProviders(mockConnectorApi("wallet"), undefined, (message) =>
+        messages.push(message),
+      ),
     );
     const providers = built.providers as unknown as {
       walletProvider: { balanceTx(tx: { serialize: () => Uint8Array }): Promise<unknown> };
     };
-    await expect(providers.walletProvider.balanceTx({ serialize: () => new Uint8Array() })).rejects.toThrow();
+    await expect(
+      providers.walletProvider.balanceTx({ serialize: () => new Uint8Array() }),
+    ).rejects.toThrow();
     expect(messages).toContain("Preparing the transaction with 1AM...");
-  });
-
-  it("falls back to the local proof server when Lace declines proving", async () => {
-    const built = await withBrowserWindow(() =>
-      buildLaceProviders(mockConnectorApi("reject"), undefined, {
-        proofServerUrl: "http://127.0.0.1:6300",
-      }),
-    );
-    expect(built.provingVia).toBe("proof-server");
-    expect(built.providers).toBeDefined();
   });
 
   it("scopes private states per contract address", async () => {
@@ -203,11 +183,5 @@ describe("midnight providers", () => {
     expect(await store.getSigningKey("addr-b")).toBeNull();
     await store.remove("bid");
     expect(await store.get("bid")).toBeNull();
-  });
-
-  it("includes a privateStateProvider in the Lace stack", async () => {
-    const built = await withBrowserWindow(() => buildLaceProviders(mockConnectorApi("wallet")));
-    const providers = built.providers as unknown as Record<string, unknown>;
-    expect(typeof providers["privateStateProvider"]).toBe("object");
   });
 });

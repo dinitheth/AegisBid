@@ -5,18 +5,17 @@
 > Target: local `undeployed` network first, preprod after.
 
 Assumes Ubuntu 22.04/24.04 with at least 2 vCPU, 4 GB RAM, 40 GB disk.
-Keep ports `9944`, `8088`, `6300` on localhost only — reach them from your
-own machines via the SSH tunnels below, never expose them publicly.
+Keep ports `9944`, `8088`, and `6300` on localhost only; tunnel `9944` and
+`8088` when needed, and never expose these services publicly.
 
 ## 0. From your PC: open tunnels (keep this terminal open)
 
 ```bash
-ssh -L 9944:localhost:9944 -L 8088:localhost:8088 -L 6300:localhost:6300 <user>@<vps-ip>
+ssh -L 9944:localhost:9944 -L 8088:localhost:8088 <user>@<vps-ip>
 ```
 
-With the tunnels up, `http://localhost:6300` on your PC is the VPS proof
-server — that is what the Lace wallet needs (`Settings » Midnight »
-Local (http://localhost:6300)`).
+The browser app uses 1AM for proving and transaction submission; it does not
+need the local proof-server tunnel for wallet transactions.
 
 ## 1. On the VPS: Docker + Node 22 + Bun
 
@@ -91,7 +90,7 @@ Tender explorer reads the on-chain tender.
 
 ## 7. Preprod (only after local is green)
 
-1. Lace wallet → preprod network → faucet tNIGHT → **Generate tDUST**.
+1. 1AM wallet → preprod network → confirm it is synced and has test DUST.
 2. On the VPS: `export MIDNIGHT_SEED=<64-hex>` (never commit it).
 3. `node ~/AegisBid/scripts/midnight-deploy.mjs --network preprod`.
 4. Confirm the address on a preprod explorer, log it in `managed/DEPLOYMENTS.md`.

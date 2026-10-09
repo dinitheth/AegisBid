@@ -7,7 +7,6 @@ import {
   FileCheck2,
   LockKeyhole,
   Menu,
-  RefreshCw,
   Search,
   ShieldCheck,
   Wallet,
@@ -39,7 +38,7 @@ import {
   storedBidToWitness,
   uiTenderToConfig,
 } from "./evaluator";
-import { formatConnectorDust, useMidnightWallet } from "./wallet";
+import { formatConnectorDust } from "./wallet";
 import {
   getChainConfig,
   isConfigured,
@@ -68,8 +67,8 @@ const DeployPage = lazy(() =>
   import("./midnight/DeployPage").then((mod) => ({ default: mod.DeployPage })),
 );
 
-// A failed live-deploy chunk must not take down the whole route: show the
-// real error inline (so it can be reported) with a way back.
+// A failed live-deploy chunk must not expose browser/build diagnostics to
+// users. Keep the details in the console for developers and offer recovery.
 class DeployErrorBoundary extends Component<
   { children: ReactNode; onBack: () => void },
   { failure: string | null }
@@ -78,15 +77,21 @@ class DeployErrorBoundary extends Component<
   static getDerivedStateFromError(error: unknown) {
     return { failure: error instanceof Error ? error.message : String(error) };
   }
+  override componentDidCatch(error: Error) {
+    console.error("Unable to load the live deploy page", error);
+  }
   override render() {
     if (this.state.failure) {
       return (
         <div className="mx-auto max-w-2xl px-5 py-12 text-center">
           <h1 className="font-display text-2xl font-semibold text-foreground">
-            Live deploy failed to load
+            This page couldn’t be loaded
           </h1>
-          <p className="mt-2 break-words text-sm text-muted-foreground">{this.state.failure}</p>
-          <div className="mt-6 flex justify-center">
+          <p className="mt-2 text-sm text-muted-foreground">
+            This may be a temporary connection issue or a recent update. Refresh the page and try again.
+          </p>
+          <div className="mt-6 flex justify-center gap-3">
+            <Button onClick={() => window.location.reload()}>Refresh page</Button>
             <Button onClick={this.props.onBack}>Back to home</Button>
           </div>
         </div>
@@ -108,8 +113,6 @@ type Page =
   | "results"
   | "about";
 type SubmittedBid = StoredBid;
-type WalletState = ReturnType<typeof useMidnightWallet>;
-
 const BID_STORAGE_KEY = "aegis-bid-history";
 const HOME_IMAGE_URL =
   "https://res.cloudinary.com/rmwlrytk/image/upload/v1789543574/AegisBid_ghaotn.webp";
@@ -186,12 +189,12 @@ function HeaderConnectButton({
       onFocus={preloadDeployChunk}
     >
       <Wallet />
-      {connecting ? "Connecting..." : `Connect ${entry?.label ?? "wallet"}`}
+      {connecting ? "Connecting..." : "Connect 1AM"}
     </Button>
   );
 }
 
-function WalletButton({ wallet, onMissing }: { wallet: WalletState; onMissing: () => void }) {
+function WalletButton({ onMissing }: { onMissing: () => void }) {
   const oneAm = useOneAmWallet();
   if (oneAm.info) {
     return (
@@ -219,41 +222,7 @@ function WalletButton({ wallet, onMissing }: { wallet: WalletState; onMissing: (
       </div>
     );
   }
-  if (wallet.connected && wallet.wallet) {
-    return (
-      <div className="hidden h-10 items-center gap-2 rounded-xl border border-border bg-card/85 px-3 shadow-sm sm:flex">
-        <Wallet className="size-4 text-primary" />
-        <div className="leading-tight">
-          <p className="font-mono text-xs text-foreground">{shortAddress(wallet.wallet.address)}</p>
-          <p className="text-[11px] text-muted-foreground">{wallet.balance} tDUST</p>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Refresh balance"
-          onClick={() => void wallet.refresh()}
-        >
-          <RefreshCw className="size-3.5" />
-        </Button>
-      </div>
-    );
-  }
-  // No wallet connected yet: connect right here (Lace preferred, 1AM
-  // fallback) instead of navigating away. Only when no wallet extension is
-  // detected at all do we bridge to the deploy page install hints.
-  if (!wallet.available && !wallet.connecting) {
-    return <HeaderConnectButton oneAm={oneAm} onMissing={onMissing} />;
-  }
-  return (
-    <Button
-      className="h-10 rounded-xl px-4 shadow-sm"
-      onClick={() => void wallet.connect()}
-      disabled={wallet.connecting}
-    >
-      <Wallet />
-      {wallet.connecting ? "Connecting..." : "Connect wallet"}
-    </Button>
-  );
+  return <HeaderConnectButton oneAm={oneAm} onMissing={onMissing} />;
 }
 
 const navItems: { id: Page; label: string }[] = [
@@ -589,13 +558,11 @@ function BidPage({
   onBack,
   onSubmit,
   onGoDeploy,
-  wallet,
 }: {
   tender: Tender;
   onBack: () => void;
   onSubmit: (bid: SubmittedBid) => void;
   onGoDeploy: () => void;
-  wallet: WalletState;
 }) {
   const [amount, setAmount] = useState("");
   const [agreed, setAgreed] = useState(false);
@@ -604,9 +571,14 @@ function BidPage({
   const [failure, setFailure] = useState<string | null>(null);
   const [failureDetail, setFailureDetail] = useState<string | null>(null);
   const oneAm = useOneAmWallet();
-  const balance = Number(wallet.balanceRaw) / 1_000_000;
-  const fee = 0.35;
-  const enough = !wallet.connected || balance >= fee;
+  const enough = (() => {
+    if (!oneAm.info) return true;
+    try {
+      return BigInt(oneAm.info.dustBalance) >= 350_000_000_000_000n;
+    } catch {
+      return false;
+    }
+  })();
   // Warm the heavy provider chunk while the user reads the form, so live
   // submit doesn't stall on first download.
   useEffect(() => {
@@ -655,11 +627,7 @@ function BidPage({
         return;
       }
     }
-    const bidderKey =
-      liveInfo?.unshieldedAddress ??
-      wallet.wallet?.address ??
-      wallet.wallet?.coinPublicKey ??
-      `local-device:${submittedAt}`;
+    const bidderKey = liveInfo?.unshieldedAddress ?? `local-device:${submittedAt}`;
     const commitment = makeCommitment(BigInt(amount), salt, bidderKey);
     const base = {
       tenderId: tender.id,
@@ -672,12 +640,16 @@ function BidPage({
       identitySecret: "",
       submittedAt,
     };
-    const liveKind = liveInfo?.walletName === "Lace" ? "lace" : "1am";
     const liveLabel = liveInfo?.walletName ?? "wallet";
     if (tender.contractAddress && tender.contractVersion !== 2) {
       const reason =
         "This is a legacy tender and cannot accept offers through the V2 proof system. Open a V2 share link to submit a bid.";
       setFailure(reason);
+      setSending(false);
+      return;
+    }
+    if (tender.contractAddress && (!liveApi || !liveContract)) {
+      setFailure("Connect your 1AM wallet before submitting an on-chain offer.");
       setSending(false);
       return;
     }
@@ -695,19 +667,16 @@ function BidPage({
         // must never evaluate during SSR.
         const { submitLiveBid } = await import("./midnight/providers");
         setStage(`Submitting sealed bid on preprod (approve in ${liveLabel})`);
-        const submitWith = (api: NonNullable<typeof liveApi>, kind: "lace" | "1am") =>
-          submitLiveBid({
-            api,
-            contractAddress: liveContract,
-            witnesses: {
-              amount: BigInt(amount),
-              salt: stringToBytes32(salt),
-              bidderKey: stringToBytes32(bidderKey),
-            },
+        const txHash = await submitLiveBid({
+          api: liveApi,
+          contractAddress: liveContract,
+          witnesses: {
+            amount: BigInt(amount),
+            salt: stringToBytes32(salt),
             bidderKey: stringToBytes32(bidderKey),
-            walletKind: kind,
-          });
-        const txHash = await submitWith(liveApi, liveKind);
+          },
+          bidderKey: stringToBytes32(bidderKey),
+        });
         onSubmit({
           ...base,
           receipt: txHash,
@@ -735,23 +704,8 @@ function BidPage({
       }
       setStage("Creating the privacy proof");
       await new Promise((resolve) => window.setTimeout(resolve, 700));
-      let onChain = false;
-      let receipt = commitment;
-      const chainConfig = getChainConfig();
-      if (wallet.api?.submitTransaction && isConfigured(chainConfig)) {
-        setStage("Waiting for wallet confirmation");
-        const request = {
-          contract: chainConfig.contractAddress,
-          circuit: "submitBid",
-          tender: tender.id,
-        };
-        const proven = wallet.api.balanceAndProveTransaction
-          ? await wallet.api.balanceAndProveTransaction(request)
-          : request;
-        receipt = await wallet.api.submitTransaction(proven);
-        onChain = true;
-        await wallet.refresh();
-      }
+      const onChain = false;
+      const receipt = commitment;
       onSubmit({
         ...base,
         receipt,
@@ -809,33 +763,19 @@ function BidPage({
                 <p className="font-mono text-xs text-card-foreground/60">
                   {oneAm.info.walletName} · {shortAddress(oneAm.info.unshieldedAddress)}
                 </p>
-              ) : wallet.connected && wallet.wallet ? (
-                <p className="font-mono text-xs text-card-foreground/60">
-                  {shortAddress(wallet.wallet.address)}
-                </p>
-              ) : wallet.available ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => void wallet.connect()}
-                  disabled={wallet.connecting}
-                >
-                  {wallet.connecting ? "Connecting..." : "Connect Lace"}
-                </Button>
               ) : (
                 <Button size="sm" variant="outline" onClick={onGoDeploy}>
-                  Connect wallet
+                  Connect 1AM
                 </Button>
               )}
             </div>
             <p className="mt-2 text-sm text-card-foreground/70">
               {oneAm.info
                 ? `Connected with ${oneAm.info.walletName} on ${oneAm.info.networkId}. Your sealed offer binds to this address.`
-                : wallet.connected
-                  ? `Available balance ${wallet.balance} tDUST · estimated network fee ${fee} tDUST`
-                  : "Connect a wallet to bind this offer to it, or continue without a wallet."}
+                : tender.contractAddress
+                  ? "Connect 1AM to bind and submit this private offer on-chain."
+                  : "Demo offers can be tested locally; connect 1AM to use the live network."}
             </p>
-            {wallet.error && <p className="mt-2 text-sm text-destructive">{wallet.error}</p>}
             {!enough && (
               <p className="mt-2 text-sm text-destructive">
                 Your balance is too low to cover the network fee.
@@ -1034,11 +974,8 @@ function BidHistory({
   );
 }
 
-function BalancePage({ wallet, onGoDeploy }: { wallet: WalletState; onGoDeploy: () => void }) {
+function BalancePage({ onGoDeploy }: { onGoDeploy: () => void }) {
   const oneAm = useOneAmWallet();
-  const others = Object.entries(wallet.wallet?.balances ?? {}).filter(
-    ([token]) => token !== "tDUST",
-  );
   return (
     <div className="mx-auto max-w-3xl px-5 py-12 sm:py-16">
       <p className="text-sm font-semibold text-primary">Your wallet</p>
@@ -1046,7 +983,7 @@ function BalancePage({ wallet, onGoDeploy }: { wallet: WalletState; onGoDeploy: 
       <p className="mt-3 leading-7 text-muted-foreground">
         {oneAm.info
           ? `Connected to your ${oneAm.info.walletName} wallet. Balances are read directly from the wallet.`
-          : "Connected to the Lace Midnight wallet in this browser. Your balance is read directly from the wallet."}
+          : "Connect 1AM to view your live preprod balance."}
       </p>
       <section className="mt-8 rounded-lg border border-border bg-card p-6 sm:p-8">
         {oneAm.info ? (
@@ -1074,44 +1011,6 @@ function BalancePage({ wallet, onGoDeploy }: { wallet: WalletState; onGoDeploy: 
               </div>
             </dl>
           </>
-        ) : wallet.connected && wallet.wallet ? (
-          <>
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="min-w-0">
-                <p className="text-xs text-card-foreground/60">Available balance</p>
-                <p className="mt-1 font-display text-4xl font-semibold text-card-foreground">
-                  {wallet.balance} <span className="text-lg text-card-foreground/60">tDUST</span>
-                </p>
-              </div>
-              <Button variant="outline" onClick={() => void wallet.refresh()}>
-                <RefreshCw className="size-4" />
-                Refresh
-              </Button>
-            </div>
-            <dl className="mt-6 space-y-4 border-t border-border pt-5 text-sm">
-              <div>
-                <dt className="text-card-foreground/60">Wallet address</dt>
-                <dd className="mt-1 break-all font-mono text-xs text-card-foreground">
-                  {wallet.wallet.address}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-card-foreground/60">Public key</dt>
-                <dd className="mt-1 break-all font-mono text-xs text-card-foreground">
-                  {wallet.wallet.coinPublicKey}
-                </dd>
-              </div>
-              {others.map(([token, value]) => (
-                <div key={token}>
-                  <dt className="text-card-foreground/60">{token}</dt>
-                  <dd className="mt-1 font-mono text-xs text-card-foreground">{value}</dd>
-                </div>
-              ))}
-            </dl>
-            <Button variant="ghost" className="mt-6" onClick={wallet.disconnect}>
-              Disconnect wallet
-            </Button>
-          </>
         ) : (
           <div className="text-center">
             <Wallet className="mx-auto size-8 text-primary" />
@@ -1119,23 +1018,13 @@ function BalancePage({ wallet, onGoDeploy }: { wallet: WalletState; onGoDeploy: 
               Wallet not connected
             </h2>
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-card-foreground/70">
-              Connect your 1AM wallet to see live balances. Lace works too, where installed.
+              Connect your 1AM wallet to see live balances.
             </p>
             <div className="mt-5 flex flex-wrap justify-center gap-2">
               <Button onClick={onGoDeploy}>Connect 1AM</Button>
-              {wallet.available && (
-                <Button
-                  variant="outline"
-                  onClick={() => void wallet.connect()}
-                  disabled={wallet.connecting}
-                >
-                  {wallet.connecting ? "Connecting..." : "Connect Lace"}
-                </Button>
-              )}
             </div>
           </div>
         )}
-        {wallet.error && <p className="mt-4 text-sm text-destructive">{wallet.error}</p>}
       </section>
     </div>
   );
@@ -1986,7 +1875,6 @@ function SiteFooter({
     { id: "bids", label: "Bid history" },
     { id: "compare", label: "Compare bids" },
     { id: "settle", label: "Settlement" },
-    { id: "deploy", label: "Live deploy" },
     { id: "balance", label: "Wallet balance" },
   ];
   const learnLinks: { id: Page; label: string }[] = [
@@ -2084,7 +1972,6 @@ export function AegisUserApp() {
   const [selected, setSelected] = useState<Tender | null>(null);
   const [bids, setBids] = useState<SubmittedBid[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
-  const wallet = useMidnightWallet();
   const chain = useChainTenders();
   const [hydratedBids, setHydratedBids] = useState(false);
   useEffect(() => {
@@ -2142,7 +2029,7 @@ export function AegisUserApp() {
                 ))}
               </nav>
               <div className="flex shrink-0 items-center gap-1.5">
-                <WalletButton wallet={wallet} onMissing={() => navigate("deploy")} />
+                <WalletButton onMissing={() => navigate("deploy")} />
                 <Button
                   variant="ghost"
                   size="icon"
@@ -2194,7 +2081,6 @@ export function AegisUserApp() {
         )}
         {page === "bid" && selected && (
           <BidPage
-            wallet={wallet}
             tender={selected}
             onBack={() => navigate("tenders")}
             onGoDeploy={() => navigate("deploy")}
@@ -2216,19 +2102,13 @@ export function AegisUserApp() {
         {page === "deploy" && (
           <DeployErrorBoundary onBack={() => navigate("home")}>
             <Suspense
-              fallback={
-                <div className="mx-auto max-w-5xl px-5 py-12 text-sm text-muted-foreground">
-                  Loading live-deploy modules...
-                </div>
-              }
+              fallback={null}
             >
               <DeployPage />
             </Suspense>
           </DeployErrorBoundary>
         )}
-        {page === "balance" && (
-          <BalancePage wallet={wallet} onGoDeploy={() => navigate("deploy")} />
-        )}
+        {page === "balance" && <BalancePage onGoDeploy={() => navigate("deploy")} />}
         {page === "results" && <Results tenders={chain.tenders} />}
         {page === "about" && <HowItWorks />}
         <SiteFooter onNavigate={navigate} chain={chain} />
