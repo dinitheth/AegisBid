@@ -125,6 +125,18 @@ describe("friendlyWalletError", () => {
     );
   });
 
+  it("explains that a 1AM balancing timeout happens before approval", () => {
+    expect(
+      friendlyWalletError(
+        new Error(
+          "1AM did not finish balancing the transaction in 45 seconds. No transaction was submitted and no approval popup can appear until balancing completes.",
+        ),
+      ),
+    ).toBe(
+      "1AM did not finish preparing the transaction, so it never reached the wallet approval step. No transaction was submitted. This balancing step is handled by 1AM; check its service status and retry once after it recovers. Reloading the extension alone may not help.",
+    );
+  });
+
   it("points explicit insufficient-funds errors at the faucet", () => {
     expect(friendlyWalletError(new Error("insufficient funds for transaction"))).toBe(
       "Your wallet couldn't prepare the transaction — it may hold no funds. Get test tokens from the preprod faucet, then try again.",
@@ -138,7 +150,9 @@ describe("friendlyWalletError", () => {
           "Following operations: submitBid, beginEvaluation, settle, are undefined or have mismatched verifier keys for contract state ContractState (Array(6))",
         ),
       ),
-    ).toBe("This tender's network proof configuration could not be verified. No bid was sent.");
+    ).toBe(
+      "This tender was not deployed with the current AegisBid V2 proof configuration. No bid was sent and no wallet approval was requested. Ask the issuer for a newly deployed V2 tender link.",
+    );
   });
 
   it("hides extension internals behind a generic message", () => {

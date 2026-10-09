@@ -253,7 +253,7 @@ export async function buildConnectorBase(
       const result = await withSafeTimeout(
         api.balanceUnsealedTransaction(bytesToHex(tx.serialize())),
         WALLET_BALANCE_TIMEOUT_MS,
-        "1AM did not finish preparing the transaction in 45 seconds. No transaction was sent. Reload the 1AM extension before retrying.",
+        "1AM did not finish balancing the transaction in 45 seconds. No transaction was submitted and no approval popup can appear until balancing completes.",
       );
       const { Transaction } = await import("@midnight-ntwrk/ledger-v8");
       return Transaction.deserialize("signature", "proof", "binding", hexToBytes(result.tx));

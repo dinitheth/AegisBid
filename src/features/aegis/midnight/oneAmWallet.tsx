@@ -202,9 +202,9 @@ export function friendlyWalletError(cause: unknown): string {
   if (/insufficient (funds|balance|dust)/i.test(firstLine)) {
     return "Your wallet couldn't prepare the transaction — it may hold no funds. Get test tokens from the preprod faucet, then try again.";
   }
-  if (/request timed out|timed out/i.test(raw)) {
-    if (/preparing the transaction/i.test(raw)) {
-      return "1AM stopped while preparing the transaction, before an approval could be shown. No transaction was sent. Reload the 1AM extension, wait until it says Synced, then retry once.";
+  if (/request timed out|timed out|did not finish balancing/i.test(raw)) {
+    if (/preparing the transaction|balancing/i.test(raw)) {
+      return "1AM did not finish preparing the transaction, so it never reached the wallet approval step. No transaction was submitted. This balancing step is handled by 1AM; check its service status and retry once after it recovers. Reloading the extension alone may not help.";
     }
     if (/submitted transaction/i.test(raw)) {
       return "1AM did not confirm the submitted transaction. Check 1AM activity before retrying so you do not create a duplicate.";
