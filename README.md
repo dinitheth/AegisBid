@@ -1,4 +1,4 @@
-# AegisBid — private tendering on Midnight
+# AegisBid — Private tendering on Midnight
 
 **Private, verifiable tendering on Midnight.**
 
