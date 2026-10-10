@@ -20,15 +20,20 @@ Point at the sealed reference + proof receipt. Show the privacy inspector:
 private local state vs public transcript.
 
 **0:55–1:15 — Settle.**
-Switch to settlement. "After the deadline, the circuit proves the winner
-is optimal and policy-compliant." Point at winner commitment, clearing
-value, comparison root. "Losing values stay redacted."
+Switch to settlement. "After the deadline, the evaluator supplies bid
+witnesses. The circuit checks that each supplied offer matches a commitment,
+compares those offers, and enforces the tender's price limit. The winning
+value appears in the receipt, while losing values stay out of it."
+"There is an important V2 limitation: the circuit does not require distinct
+witnesses, so it cannot prove that every committed bid was included or that
+the selected offer is globally optimal. Fixing and testing that is planned
+for Wave 3."
 
 **1:15–1:30 — Prove it.**
-Run `bun run test` in a terminal (18 green) and `bun run compact:check`
-(24 gates). Open the Settlement page and settle the demo offers.
-"Every invariant — sealed winner, reserve rejection, deadline rejection —
-is asserted by automated tests." Close with repo + contact.
+Show only verification commands that have just completed successfully. Explain
+that the protocol-model tests and static V2 checks help catch regressions, but
+do not replace a fresh Compact compile or verify the missing complete-set
+uniqueness property. Close with the repository and contact.
 
 ## Recording checklist
 

@@ -10,9 +10,12 @@ rules disagree on existing-project eligibility and use different schedules.
 > contract deployed on Midnight Preprod, with generated Ledger 8 bindings and
 > browser proving assets. The V2 flow connects through 1AM and checks tender
 > deadlines using ledger time, binds a tender-scoped nullifier to the
-> transaction context and supplied bidder key, requires an evaluator
-> capability, and verifies the complete committed set, optimal offer, and
-> reserve/ceiling before publishing a settlement receipt.
+> transaction context and supplied bidder key, and requires an evaluator
+> capability. Settlement checks the supplied witnesses against commitments,
+> compares their amounts, and enforces the reserve or ceiling. The current V2
+> circuit does not require distinct witnesses, so it does not prove that the
+> complete committed set was evaluated or that the selected offer is truly
+> optimal.
 >
 > Wave 2 work also added cross-device tender discovery, encrypted witness-file
 > handoff for evaluation, clearer bidder progress/results, and fixes for
@@ -24,14 +27,12 @@ rules disagree on existing-project eligibility and use different schedules.
 > bidder key does not prove real-world identity. Evaluators need bid witnesses
 > after closing, with the current file handoff relying on a separate trusted
 > channel. Proof preparation depends on the 1AM service. AegisBid publishes a
-> verified outcome but does not transfer a real award or payment. No security
-> audit has been completed.
+> settlement receipt but does not transfer a real award or payment. V2 does
+> not prove complete-set optimality. No security audit has been completed.
 
-This draft describes changes in pushed Wave 2 commits through `b0d3915`.
-The current worktree has additional uncommitted proof-timeout changes. Before
-submitting, decide whether to include and push those changes, rerun checks,
-and update the cited commit/revision accordingly. Never describe local-only
-changes as part of the public submission.
+This file is a preparation note, not the submitted progress statement. Verify
+the selected commit and the AKINDO entry before describing Wave 2 changes.
+Never describe local-only changes as part of the public submission.
 
 ## Files to attach
 

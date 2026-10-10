@@ -6,7 +6,7 @@ prototype as a production procurement system or claim an award/payment flow.
 
 ## 1. AegisBid
 
-**Private bids. Publicly verifiable outcomes.**
+**Private offers. A public settlement receipt.**
 
 Sealed tender evaluation on Midnight. Wave 2 · October 2026 ·
 `github.com/dinitheth/AegisBid`
@@ -18,9 +18,11 @@ Add team names, contact, and the live demo URL before submitting.
 Public-chain auctions can expose economically sensitive offers. Traditional
 off-chain evaluation asks participants to trust the issuer's process.
 
-AegisBid applies zero-knowledge proofs to the offer and winner checks, while
-keeping the product flow familiar: publish policy, submit sealed offers,
-evaluate after closing, inspect a public receipt.
+AegisBid applies zero-knowledge proofs to sealed offers and settlement checks,
+while keeping the product flow familiar: publish policy, submit sealed offers,
+evaluate after closing, inspect a public receipt. The current V2 circuit does
+not ensure that settlement witnesses are distinct, so it cannot prove that
+the selected offer is optimal across every committed bid.
 
 ## 3. Tender lifecycle
 
@@ -30,8 +32,11 @@ evaluate after closing, inspect a public receipt.
    commitment and tender-scoped nullifier, not the offer amount.
 3. After ledger time reaches the deadline, the evaluator opens the committed
    set and submits the candidate witnesses.
-4. The Compact circuit checks membership, complete set, winner ordering, and
-   reserve/ceiling. It publishes a receipt with the winning value.
+4. The Compact circuit checks that each supplied witness matches a commitment,
+   compares the supplied values, and enforces the reserve or ceiling. V2 does
+   not ensure that the witnesses are distinct and cover every commitment, so
+   the receipt does not prove global optimality. It publishes the selected
+   value.
 
 ## 4. What the ledger sees
 
@@ -81,10 +86,11 @@ losing price confidentiality matters. Pilot path: one low-risk, non-binding
 tender with a willing issuer; test bidder onboarding, witness handoff, close,
 and settlement before any production claim.
 
-Next: make evaluator witness handoff recoverable across devices, validate
-larger bid sets with an aggregation design, audit the contract and client,
-and document the issuer's award/payment process. AegisBid proves a tender
-outcome; it does not transfer an award or payment.
+Next: fix and test complete-set uniqueness, make evaluator witness handoff
+recoverable across devices, validate larger bid sets with an aggregation
+design, audit the contract and client, and document the issuer's award/payment
+process. AegisBid records a settlement result; it does not transfer an award
+or payment.
 
 ### Before publishing the deck
 

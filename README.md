@@ -1,6 +1,8 @@
-# AegisBid — private procurement for Midnight Wave 2
+# AegisBid — private tendering on Midnight
 
-AegisBid is a privacy-preserving tender prototype for Midnight. Issuers publish the tender policy publicly, bidders submit sealed offers, and an authorized evaluator settles the result without publishing losing amounts or bid salts.
+**Private, verifiable tendering on Midnight.**
+
+AegisBid is a privacy-preserving tender prototype for Midnight. Issuers publish the tender policy publicly, bidders submit sealed offers, and an authorized evaluator records a settlement result without publishing losing amounts or bid salts.
 
 It is built for the **Midnight Wave 2** hackathon track and runs against **Midnight Preprod** through the 1AM wallet.
 
@@ -10,7 +12,7 @@ It is built for the **Midnight Wave 2** hackathon track and runs against **Midni
 
 - **Sealed offers:** an offer amount and salt are private witness inputs; the public ledger receives a binding commitment rather than the amount.
 - **On-chain tender timing:** bid acceptance and the transition to evaluation use Midnight ledger block time, not a timestamp supplied by the browser.
-- **Correct policy enforcement:** highest-bid tenders require a winning amount at or above the reserve; lowest-compliant tenders require it at or below the ceiling.
+- **Policy checks over supplied witnesses:** highest-bid tenders require the selected amount to meet the reserve; lowest-compliant tenders require it to meet the ceiling. The completeness limitation below means V2 does not yet prove that the selected bid is optimal across every committed offer.
 - **Evaluator authorization:** deployment commits to a private evaluator capability. Only the holder can begin evaluation or settle.
 - **Duplicate supplied-identity prevention:** a tender-scoped nullifier prevents reuse of the same supplied bidder key for that tender.
 - **Inspectable results:** the public record exposes the winning commitment and settlement outcome while keeping losing offers sealed.
@@ -19,6 +21,17 @@ The evaluator must obtain private witnesses for every bid after closing. The
 current UI supports encrypted witness-file handoff through a separate trusted
 channel. This is not automatic recovery, and AegisBid does not transfer the
 real-world award or payment.
+
+### V2 settlement limitation
+
+The current V2 circuit checks that the declared winner and each supplied
+candidate witness match a committed offer, compares the supplied amounts, and
+enforces the reserve or ceiling. It checks the supplied witness count against
+the public commitment count, but it does **not** require the supplied
+commitments to be distinct. An evaluator could therefore repeat a committed
+bid and omit another one. V2 does not prove that the selected offer is truly
+optimal across the complete committed set. Treat settlement as a prototype
+result, not a trustworthy proof of optimal selection. This is a Wave 3 fix.
 
 ## Live V2 deployment
 
@@ -70,7 +83,7 @@ Do not configure the legacy `VITE_ZK_CONFIG_BASE` for a V2 deployment. To host V
 | Same-origin indexer endpoint | [`src/routes/api.midnight.indexer.ts`](src/routes/api.midnight.indexer.ts) | Bounded read-only proxy to the official Midnight GraphQL indexers |
 | Security-shape gate | [`scripts/compact-v2-check.mjs`](scripts/compact-v2-check.mjs) | Guards V2 invariants before release |
 
-V2 uses Compact **0.31.1** / Ledger 8-compatible generated artifacts. The full V2 compile was verified on the Azure builder VM because the Compact ZK backend requires a compatible AVX-capable CPU.
+V2 uses Compact **0.31.1** / Ledger 8-compatible generated artifacts. Project notes report that the V2 package was compiled on an Azure builder VM because the Compact ZK backend requires a compatible AVX-capable CPU. This repository does not include a reproducible compiler log for that run, and a fresh compile has not been verified as part of this README review. A successful full Compact compile is required by the event's technical gate; the static check below is not a compile.
 
 ### Practical proving bound
 
@@ -81,6 +94,7 @@ V2 settles at most **8 bids per tender**. This is an explicit hackathon trade-of
 - Preprod’s current Compact/Ledger toolchain does not provide a circuit-level `kernel.caller()` binding. V2 prevents duplicate **supplied** bidder keys, but cannot yet prove that the key belongs to the wallet that submitted the transaction. It is not Sybil resistance or verified real-world identity.
 - Bid timing, transaction origin, and other network metadata may be visible.
 - The evaluator must retain the private capability and bid witnesses needed for settlement.
+- Settlement witnesses are not required to be distinct, so a repeated committed bid can mask an omitted bid. V2 therefore does not guarantee complete-set optimality; do not rely on the selected result as a proven global winner until this is fixed and verified.
 - This repository includes legacy V1 material for history and comparison. New work must use `aegis_bid_v2.compact` and V2 assets.
 - No security audit, production key-management design, or compliance review has been performed.
 
@@ -152,7 +166,7 @@ npm run build            # production browser/server build
 | `tests/midnight.networks.test.ts` | Pinned network configuration |
 | `tests/midnight.forensics.test.ts` | Transaction-assembly diagnostic retention |
 
-`npm run compact:v2:check` asserts the V2 security properties that matter for Wave 2: ledger-time gating, evaluator capability, bidder nullifier usage, highest-floor/lowest-ceiling behavior, and the eight-bid proving bound.
+`npm run compact:v2:check` performs structural checks for ledger-time gating, evaluator capability, bidder nullifier usage, highest-floor/lowest-ceiling conditions, and the eight-bid proving bound. It does not invoke the Compact compiler and does not establish that the settlement witness set is complete or unique. The Vitest protocol/model tests also do not substitute for checking the compiled contract's behavior.
 
 ## Midnight local development and recompilation
 
