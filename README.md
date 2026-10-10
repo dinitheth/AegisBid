@@ -43,11 +43,15 @@ The current V2 tender contract is deployed on Midnight Preprod:
 
 Use the app’s **Copy share link** action for the complete tender URL. The address alone identifies the contract, while the share link also carries display metadata that lets another browser discover the tender.
 
-The app loads V2 proving assets by default from:
+The app's default V2 proving-asset base URL is:
 
 ```text
 https://cdn.jsdelivr.net/gh/dinitheth/AegisBid@8c335f5f3edca4a431053bfd8ed137afbb2430b5/managed/aegis-bid-v2
 ```
+
+This is a directory prefix used by the app to request individual files; it is
+not a browsable web page. Opening the base URL by itself may show a 404. For
+example, the `submitBid` prover file is served from [`keys/submitBid.prover`](https://cdn.jsdelivr.net/gh/dinitheth/AegisBid@8c335f5f3edca4a431053bfd8ed137afbb2430b5/managed/aegis-bid-v2/keys/submitBid.prover).
 
 Do not configure the legacy `VITE_ZK_CONFIG_BASE` for a V2 deployment. To host V2 assets elsewhere, set `VITE_AEGISBID_V2_ZK_CONFIG_BASE` to a directory containing the V2 `keys/` and `zkir/` folders.
 
