@@ -38,6 +38,13 @@ https://cdn.jsdelivr.net/gh/dinitheth/AegisBid@8c335f5f3edca4a431053bfd8ed137afb
 
 Do not configure the legacy `VITE_ZK_CONFIG_BASE` for a V2 deployment. To host V2 assets elsewhere, set `VITE_AEGISBID_V2_ZK_CONFIG_BASE` to a directory containing the V2 `keys/` and `zkir/` folders.
 
+### Runtime integration
+
+- The browser connects to the 1AM wallet for account access, transaction approval, and proof generation. Midnight's public GraphQL indexer supplies contract state, transaction activity, and the latest network block time.
+- Browser reads to the official Midnight Preview, Preprod, and Mainnet indexers use the same-origin `POST /api/midnight/indexer?network=<network>` route. This avoids browser CORS failures; the server route only forwards bounded read-only GraphQL requests to the selected official indexer and does not proxy arbitrary URLs.
+- V2 proof configuration is pinned by `aegis-v2-8c335f5f3edca4a431053bfd8ed137afbb2430b5`. A tender share link carries its public policy and this proof-configuration ID, while live commitment counts and settlement status are read from the indexer. Links for incompatible or retired V1 deployments are not treated as active V2 tenders.
+- The flagship tender is the verified V2 Preprod deployment listed above. Issuer-created tender records are stored locally; use **Copy share link** to share the tender policy and address with another browser. Optional shared discovery can be configured with the server-side registry variables below.
+
 ## End-to-end demo
 
 1. Open the deployed AegisBid app and connect a **synced 1AM Preprod** wallet.
@@ -48,9 +55,9 @@ Do not configure the legacy `VITE_ZK_CONFIG_BASE` for a V2 deployment. To host V
 
 ### Operational notes
 
-- A 1AM `Request timed out` error occurs before a wallet approval is shown; **no bid was sent**. Confirm the wallet shows **Preprod · Synced**, then retry once. Do not keep clicking Submit.
+- A 1AM timeout before the wallet approval is shown means the request did not reach transaction approval; no transaction was sent. Confirm the wallet shows **Preprod · Synced**, reload/reconnect 1AM if needed, and retry once. Do not repeatedly click Submit: proof generation may still be running, and the app does not automatically retry it.
 - The evaluator capability is held in browser-local storage under `aegisbid-v2-evaluator-secret:<contract-address>`. Keep the deploying browser profile and back up the secret before clearing site data. Never share a wallet recovery phrase or this secret.
-- The initial proving-key download and first proof can take minutes on Preprod. Keep the page and wallet open until the wallet approval appears.
+- The initial proving-key download and first proof can take several minutes on Preprod. The app allows up to ten minutes for proof generation and shows progress before the wallet approval step. Keep the page and wallet open until approval appears; a timeout is not proof that a transaction was submitted.
 
 ## V2 contract and artifacts
 
@@ -60,6 +67,7 @@ Do not configure the legacy `VITE_ZK_CONFIG_BASE` for a V2 deployment. To host V
 | Generated V2 bindings | [`managed/aegis-bid-v2/contract`](managed/aegis-bid-v2/contract) | Browser contract integration |
 | V2 prover/verifier assets | [`managed/aegis-bid-v2`](managed/aegis-bid-v2) | `submitBid`, `beginEvaluation`, and `settle` proofs |
 | Browser integration | [`src/features/aegis/midnight`](src/features/aegis/midnight) | 1AM connector, provider stack, deployment UI |
+| Same-origin indexer endpoint | [`src/routes/api.midnight.indexer.ts`](src/routes/api.midnight.indexer.ts) | Bounded read-only proxy to the official Midnight GraphQL indexers |
 | Security-shape gate | [`scripts/compact-v2-check.mjs`](scripts/compact-v2-check.mjs) | Guards V2 invariants before release |
 
 V2 uses Compact **0.31.1** / Ledger 8-compatible generated artifacts. The full V2 compile was verified on the Azure builder VM because the Compact ZK backend requires a compatible AVX-capable CPU.
@@ -85,7 +93,11 @@ private amount + salt  -- ZK proof -> commitment and nullifier
 private bidder key                  tender policy and phase
                                      commitment count
 Issuer evaluator capability  ------> authorized evaluation/settlement
-                                     public settlement outcome
+                                     public winning receipt
+
+Browser reads to the official public indexer are routed through the app's
+same-origin server endpoint, avoiding direct browser CORS requests. Transaction
+proofs and approvals still go through the connected 1AM wallet.
 ```
 
 The UI also contains a deterministic local protocol model used for fast, repeatable tests. It is a test harness; live contract behavior is supplied by the V2 Compact contract and generated artifacts.
