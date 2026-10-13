@@ -1,10 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-
-const INDEXER_URLS = {
-  preview: "https://indexer.preview.midnight.network/api/v4/graphql",
-  preprod: "https://indexer.preprod.midnight.network/api/v4/graphql",
-  mainnet: "https://indexer.mainnet.midnight.network/api/v4/graphql",
-} as const;
+import {
+  resolveIndexerUpstream,
+  type IndexerNetwork,
+  type IndexerTokens,
+} from "../features/aegis/chain";
 
 const MAX_QUERY_BYTES = 64 * 1024;
 
@@ -15,15 +14,32 @@ function jsonError(status: number, message: string) {
   });
 }
 
-/** Same-origin, read-only proxy for official Midnight public GraphQL indexers. */
+function serverTokens(): IndexerTokens {
+  const read = (name: string): string | undefined => {
+    const value = process.env[name]?.trim();
+    return value ? value : undefined;
+  };
+  return {
+    preprod: read("BLOCKFROST_PREPROD_PROJECT_ID"),
+    mainnet: read("BLOCKFROST_MAINNET_PROJECT_ID"),
+  };
+}
+
+/**
+ * Same-origin, read-only proxy for Midnight public GraphQL indexers.
+ * Preview is still Midnight-hosted; preprod/mainnet moved to Blockfrost
+ * when Midnight decommissioned its endpoints (HTTP 410 since 2026-10-09),
+ * so those need server-side project tokens that never reach the browser.
+ */
 export const Route = createFileRoute("/api/midnight/indexer")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const network = new URL(request.url).searchParams.get("network");
-        if (network !== "preview" && network !== "preprod" && network !== "mainnet") {
+        const networkParam = new URL(request.url).searchParams.get("network");
+        if (networkParam !== "preview" && networkParam !== "preprod" && networkParam !== "mainnet") {
           return jsonError(400, "Unsupported Midnight network.");
         }
+        const network: IndexerNetwork = networkParam;
 
         const contentLength = Number(request.headers.get("content-length") ?? 0);
         if (contentLength > MAX_QUERY_BYTES) {
@@ -49,18 +65,23 @@ export const Route = createFileRoute("/api/midnight/indexer")({
           return jsonError(400, "Only read-only GraphQL queries are allowed.");
         }
 
+        const upstream = resolveIndexerUpstream(network, serverTokens());
+        if ("error" in upstream) {
+          return jsonError(502, upstream.error);
+        }
+
         try {
-          const upstream = await fetch(INDEXER_URLS[network], {
+          const response = await fetch(upstream.url, {
             method: "POST",
             headers: { "content-type": "application/json", accept: "application/json" },
             body,
             signal: AbortSignal.timeout(20_000),
           });
           const responseHeaders = new Headers();
-          const contentType = upstream.headers.get("content-type");
+          const contentType = response.headers.get("content-type");
           if (contentType) responseHeaders.set("content-type", contentType);
-          return new Response(await upstream.arrayBuffer(), {
-            status: upstream.status,
+          return new Response(await response.arrayBuffer(), {
+            status: response.status,
             headers: responseHeaders,
           });
         } catch {

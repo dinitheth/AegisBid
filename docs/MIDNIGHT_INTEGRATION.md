@@ -46,6 +46,19 @@
 Pinned versions (docs support matrix, Sep 2026): Midnight.js `4.1.1`,
 compact toolchain `0.31.1`, proof server `8.1.0`, indexer v4.
 
+Indexer proxy (Blockfrost): Midnight decommissioned its hosted
+preprod/mainnet indexers (HTTP 410 since 2026-10-09). Browser reads go
+through the same-origin `POST /api/midnight/indexer?network=…` route
+(`src/routes/api.midnight.indexer.ts`), which forwards preview to the
+Midnight-hosted indexer and preprod/mainnet to Blockfrost
+(`midnight-{preprod,mainnet}.blockfrost.io/api/v0`, GraphQL schema
+unchanged). The Blockfrost project tokens live server-side only
+(`BLOCKFROST_PREPROD_PROJECT_ID` / `BLOCKFROST_MAINNET_PROJECT_ID`, see
+`.env.example`); without a token the proxy answers 502 with a plain-text
+reason. Host-to-network mapping is pure and tested
+(`parseIndexerNetwork` / `resolveIndexerUpstream` in `chain.ts`); local
+devnet and custom indexer URLs are never proxied.
+
 ## Path to first deployment (local, nothing at risk)
 
 ```bash

@@ -12,7 +12,9 @@ import {
   isValidPublishedTender,
   loadPublishedTenders,
   mergePublishedSources,
+  parseIndexerNetwork,
   parseSharedTender,
+  resolveIndexerUpstream,
   publishedToTender,
   publishedContractVersion,
   type ChainActivity,
@@ -66,6 +68,53 @@ describe("Midnight indexer browser proxy URL", () => {
     expect(browserIndexerQueryUrl(local)).toBe(local);
     expect(browserIndexerQueryUrl(arbitrary)).toBe(arbitrary);
     vi.unstubAllGlobals();
+  });
+
+  it("routes Blockfrost-hosted indexer URLs through the same origin", () => {
+    vi.stubGlobal("window", { location: { origin: "https://aegisbid.vercel.app" } });
+    expect(browserIndexerQueryUrl("https://midnight-preprod.blockfrost.io/api/v0")).toBe(
+      "https://aegisbid.vercel.app/api/midnight/indexer?network=preprod",
+    );
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("Midnight indexer network mapping", () => {
+  it("identifies official and Blockfrost hosts per network", () => {
+    expect(parseIndexerNetwork("https://indexer.preprod.midnight.network/api/v4/graphql")).toBe(
+      "preprod",
+    );
+    expect(parseIndexerNetwork("https://midnight-preprod.blockfrost.io/api/v0")).toBe("preprod");
+    expect(parseIndexerNetwork("https://midnight-mainnet.blockfrost.io/api/v0")).toBe("mainnet");
+    expect(parseIndexerNetwork("https://indexer.preview.midnight.network/api/v4/graphql")).toBe(
+      "preview",
+    );
+  });
+
+  it("returns null for local and unknown indexer URLs", () => {
+    expect(parseIndexerNetwork("http://localhost:8088/api/v4/graphql")).toBeNull();
+    expect(parseIndexerNetwork("https://example.com/api/v4/graphql")).toBeNull();
+    expect(parseIndexerNetwork("not a url")).toBeNull();
+  });
+
+  it("resolves preview to the Midnight-hosted indexer without a token", () => {
+    expect(resolveIndexerUpstream("preview", {})).toEqual({
+      url: "https://indexer.preview.midnight.network/api/v4/graphql",
+    });
+  });
+
+  it("resolves preprod and mainnet to Blockfrost when tokens are provided", () => {
+    expect(resolveIndexerUpstream("preprod", { preprod: "pp-token" })).toEqual({
+      url: "https://midnight-preprod.blockfrost.io/api/v0?project_id=pp-token",
+    });
+    expect(resolveIndexerUpstream("mainnet", { mainnet: "mn-token" })).toEqual({
+      url: "https://midnight-mainnet.blockfrost.io/api/v0?project_id=mn-token",
+    });
+  });
+
+  it("reports a clear error when the Blockfrost token is missing", () => {
+    const resolved = resolveIndexerUpstream("preprod", {});
+    expect("error" in resolved).toBe(true);
   });
 });
 

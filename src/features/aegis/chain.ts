@@ -16,16 +16,64 @@ export type ChainConfig = { indexerUrl: string; contractAddress: string };
  * Only the official public network hosts are mapped; arbitrary configured
  * URLs continue to be used as-is and are never forwarded by our server.
  */
+export type IndexerNetwork = "preview" | "preprod" | "mainnet";
+
+/**
+ * Identifies which Midnight network an indexer URL belongs to, from either
+ * the retired Midnight-hosted hosts or the Blockfrost hosts (which wallets
+ * may already return). Unknown hosts (local devnet, custom indexers) yield
+ * null and are always used as-is, never proxied.
+ */
+export function parseIndexerNetwork(indexerUrl: string): IndexerNetwork | null {
+  try {
+    const hostname = new URL(indexerUrl).hostname.toLowerCase();
+    const official = /^indexer\.(preview|preprod|mainnet)\.midnight\.network$/.exec(hostname)?.[1];
+    if (official === "preview" || official === "preprod" || official === "mainnet") {
+      return official;
+    }
+    if (hostname === "midnight-preview.blockfrost.io") return "preview";
+    if (hostname === "midnight-preprod.blockfrost.io") return "preprod";
+    if (hostname === "midnight-mainnet.blockfrost.io") return "mainnet";
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export type IndexerTokens = {
+  preprod?: string | undefined;
+  mainnet?: string | undefined;
+};
+
+/**
+ * Resolves the upstream indexer URL for a network. Preview is still
+ * Midnight-hosted and needs no token; preprod/mainnet moved to Blockfrost
+ * when Midnight decommissioned its endpoints (410 Gone since 2026-10-09),
+ * so those require a server-side project token per network.
+ */
+export function resolveIndexerUpstream(
+  network: IndexerNetwork,
+  tokens: IndexerTokens = {},
+): { url: string } | { error: string } {
+  if (network === "preview") {
+    return { url: "https://indexer.preview.midnight.network/api/v4/graphql" };
+  }
+  const token = network === "preprod" ? tokens.preprod : tokens.mainnet;
+  if (!token) {
+    return {
+      error: `No indexer token configured for Midnight ${network} (set the server-side Blockfrost project token).`,
+    };
+  }
+  const host =
+    network === "preprod" ? "midnight-preprod.blockfrost.io" : "midnight-mainnet.blockfrost.io";
+  return { url: `https://${host}/api/v0?project_id=${encodeURIComponent(token)}` };
+}
+
 export function browserIndexerQueryUrl(indexerUrl: string): string {
   if (typeof window === "undefined") return indexerUrl;
-  try {
-    const url = new URL(indexerUrl);
-    const match = /^indexer\.(preview|preprod|mainnet)\.midnight\.network$/i.exec(url.hostname);
-    if (!match || url.pathname.replace(/\/+$/, "") !== "/api/v4/graphql") return indexerUrl;
-    return `${window.location.origin}/api/midnight/indexer?network=${match[1]?.toLowerCase()}`;
-  } catch {
-    return indexerUrl;
-  }
+  const network = parseIndexerNetwork(indexerUrl);
+  if (!network) return indexerUrl;
+  return `${window.location.origin}/api/midnight/indexer?network=${network}`;
 }
 
 /**
